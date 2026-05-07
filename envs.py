@@ -121,13 +121,17 @@ class PilotageEnv(gym.Env):
         spd = float(np.random.uniform(8, 13))
         alt = float(np.random.uniform(80, 400))
         yaw = float(np.random.uniform(-math.pi, math.pi))
+        # trim pitch: angle of attack needed so lift = weight at this speed
+        q = 0.5 * 1.225 * spd ** 2
+        cl_trim = (2.5 * 9.81) / (q * 0.40)
+        pitch_trim = float(np.clip((cl_trim - 0.4) / 4.0, 0.05, 0.30))
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
             vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
-            pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=0.30,
+            pitch=pitch_trim, roll=0.0, yaw=yaw, throttle_pos=0.30,
         )
         self._target = {'speed': spd, 'alt': alt, 'yaw': yaw}
-        self._cmd = np.array([spd, 0.0, 0.0])
+        self._cmd = np.array([spd, pitch_trim, 0.0])
 
     def _init_rate_climb(self):
         spd   = float(np.random.uniform(9, 13))
@@ -321,7 +325,12 @@ class PilotageEnv(gym.Env):
 
     def step(self, action):
         self.steps += 1
-        self._state = self._phys.step(self._state, action, dt=0.1)
+        # Flaps locked at 0 during pilotage — 50% flap default gave free lift
+        # at pitch=0, letting the plane fly level with zero elevator and zero
+        # throttle (perfect local optimum, no reward gradient for either).
+        actuators = np.array(action, dtype=float)
+        actuators[4] = 0.0
+        self._state = self._phys.step(self._state, actuators, dt=0.1)
         s = self._state
 
         reward = self._reward()
