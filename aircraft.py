@@ -168,8 +168,21 @@ class AircraftPhysics:
 
         gz = -self.G * self.MASS
 
-        ax = (tx + lx + dx)      / self.MASS
-        ay = (ty + ly + dy)      / self.MASS
+        # --- sideslip damping (keel / vertical fin weathervane effect) ---
+        # Without this, yaw rotation from banked turns spins the heading away
+        # from the velocity direction.  At 57° bank the heading rotates ~70°
+        # in 2 sim-seconds while velocity stays put — throttle then pushes
+        # sideways or backward and the policy correctly learns to avoid it.
+        # This lateral restoring force keeps velocity aligned with heading.
+        lat_x =  math.cos(state.yaw)   # unit vector 90° right of heading
+        lat_y =  math.sin(state.yaw)
+        v_lat = state.vel[0] * lat_x + state.vel[1] * lat_y   # lateral slip speed
+        F_keel = -q * self.WING_AREA * 0.8 * v_lat            # restoring force
+        kx = F_keel * lat_x
+        ky = F_keel * lat_y
+
+        ax = (tx + lx + dx + kx) / self.MASS
+        ay = (ty + ly + dy + ky) / self.MASS
         az = (tz + lz + dz + gz) / self.MASS
 
         state.vel = state.vel + np.array([ax, ay, az]) * dt
