@@ -86,13 +86,13 @@ class PilotageEnv(gym.Env):
 
         n_sc = len(self.SCENARIOS)   # always 6, for consistent obs dim
 
-        # obs = flight state (11) + scenario one-hot (6) = 17-D
+        # obs = 13 flight state + 6 scenario one-hot = 19-D
         obs_high = np.array([
-            30, 700,                          # airspeed (30 m/s ceiling), altitude
+            30, 700,                          # airspeed, altitude
             math.pi/2, math.pi, math.pi,     # pitch, roll, yaw (normalised to ±π)
             6, 6, 6,                          # angular rates
             30, math.pi/2, math.pi,          # target speed, pitch, roll
-            1.0,                             # throttle_pos — gives closed-loop feedback
+            1.0, 1.0,                        # throttle_pos, flap_pos — actuator feedback
             *([1.0] * n_sc),                 # scenario one-hot
         ], dtype=np.float32)
 
@@ -219,7 +219,7 @@ class PilotageEnv(gym.Env):
              s.pitch, s.roll, yaw,
              s.pitch_rate, s.roll_rate, s.yaw_rate,
              self._cmd[0], self._cmd[1], self._cmd[2],
-             s.throttle_pos],              # closed-loop throttle feedback
+             s.throttle_pos, s.flap_pos],  # actuator state feedback
             self._scenario_onehot(),
         ]).astype(np.float32)
 
@@ -239,11 +239,13 @@ class PilotageEnv(gym.Env):
         sc = self._scenario
 
         if sc == 'straight_level':
-            speed_err = abs(s.airspeed - self._target['speed']) / 10.0     # wider norm — old 6 saturated at 17 m/s eq
+            speed_err = abs(s.airspeed - self._target['speed']) / 10.0
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
             r  =  1.0 - speed_err - alt_err
-            r -= abs(s.roll)  / math.pi         # 0–1 range
-            r -= abs(s.pitch) / (math.pi / 2)
+            r -= abs(s.roll) / math.pi
+            # NO pitch penalty: trim pitch at 8-12 m/s is 8-17° — penalising it
+            # taught the policy to fly pitch=0 (falling) to score r=1.0 instead of
+            # using the ~0.15 rad needed for level flight (which scored r=0.905).
             r  = float(np.clip(r, -1.0, 1.0))
 
         elif sc == 'rate_climb':
@@ -438,7 +440,7 @@ class LandingEnv(gym.Env):
             s.pitch, s.roll, yaw,
             s.pitch_rate, s.roll_rate, s.yaw_rate,
             cmd[0], cmd[1], cmd[2],
-            s.throttle_pos,           # must match PilotageEnv._obs() layout
+            s.throttle_pos, s.flap_pos,   # must match PilotageEnv._obs() layout
         ], dtype=np.float32)
         # pad zeros for scenario one-hot (no active scenario in landing mode)
         return np.concatenate([base, np.zeros(len(PilotageEnv.SCENARIOS), dtype=np.float32)])

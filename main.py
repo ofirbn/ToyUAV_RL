@@ -825,22 +825,26 @@ while True:
     roll_deg    = math.degrees(roll)
     throttle_pct = int(_s.throttle_pos * 100) if _s else 0
     tgt_spd      = float(_disp_env._cmd[0]) if hasattr(_disp_env, '_cmd') else 0.0
+    horiz_spd    = float(math.sqrt(vel[0]**2 + vel[1]**2))
+    vert_spd     = float(vel[2])
 
     if is_pilotage:
         hud = [
-            (f"RL  {stage_label}",                        (100,200,255)),
-            (f"SCENARIO:  {sc_name}",                     (180,180,255)),
-            ("",                                           WHITE),
-            (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s", WHITE),
-            (f"TGT SPEED: {tgt_spd:6.2f} m/s",            (180,255,180)),
-            (f"THROTTLE:  {throttle_pct:5d} %",            (255,220,80)),
-            (f"ALTITUDE:  {pos[2]:6.1f} m",                WHITE),
-            (f"PITCH:     {pitch_deg:+6.1f}°",             WHITE),
-            (f"BANK:      {roll_deg:+6.1f}°",              WHITE),
-            ("",                                           WHITE),
-            (f"EPISODES:  {_disp_episodes}",          WHITE),
-            (f"UPDATES:   {updates}",                 WHITE),
-            (f"TIMESTEPS: {timesteps:,}",             WHITE),
+            (f"RL  {stage_label}",                          (100,200,255)),
+            (f"SCENARIO:  {sc_name}",                       (180,180,255)),
+            ("",                                             WHITE),
+            (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s",  WHITE),
+            (f"HORIZ SPD: {horiz_spd:6.2f} m/s",            (200,230,255)),
+            (f"VERT SPD:  {vert_spd:+6.2f} m/s",            (255,180,100) if vert_spd < -0.5 else WHITE),
+            (f"TGT SPEED: {tgt_spd:6.2f} m/s",              (180,255,180)),
+            (f"THROTTLE:  {throttle_pct:5d} %",              (255,220,80)),
+            (f"ALTITUDE:  {pos[2]:6.1f} m",                  WHITE),
+            (f"PITCH:     {pitch_deg:+6.1f}°",               WHITE),
+            (f"BANK:      {roll_deg:+6.1f}°",                WHITE),
+            ("",                                             WHITE),
+            (f"EPISODES:  {_disp_episodes}",                 WHITE),
+            (f"UPDATES:   {updates}",                        WHITE),
+            (f"TIMESTEPS: {timesteps:,}",                    WHITE),
         ]
     else:
         hud = [
