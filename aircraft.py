@@ -169,7 +169,11 @@ class AircraftPhysics:
         tz =  sp      * F_thrust
 
         cr, sr = math.cos(state.roll), math.sin(state.roll)
-        lx = -sr * cp * F_lift
+        # lx sign: positive roll → yaw increases (left turn from -y heading) →
+        # centripetal force must be in +x direction → lx must be positive.
+        # Old sign (-sr) was wrong: lift fought the turn, forcing the keel to
+        # do all the work and braking horizontal speed.
+        lx =  sr * cp * F_lift
         ly =  0.0
         lz =  cr * cp * F_lift
 
@@ -179,15 +183,15 @@ class AircraftPhysics:
         gz = -self.G * self.MASS
 
         # --- sideslip damping (keel / vertical fin weathervane effect) ---
-        # Without this, yaw rotation from banked turns spins the heading away
-        # from the velocity direction.  At 57° bank the heading rotates ~70°
-        # in 2 sim-seconds while velocity stays put — throttle then pushes
-        # sideways or backward and the policy correctly learns to avoid it.
-        # This lateral restoring force keeps velocity aligned with heading.
-        lat_x =  math.cos(state.yaw)   # unit vector 90° right of heading
+        # Keeps velocity direction aligned with heading.
+        # Physically: F_side = q * S * CY * beta  where beta = v_lat / v
+        #           = (q/v) * S * CY * v_lat
+        # Must use q/v (not q) — using q directly gave 183 N from a tiny
+        # misalignment, braking the plane to 0 horizontal speed in 2 steps.
+        lat_x =  math.cos(state.yaw)
         lat_y =  math.sin(state.yaw)
-        v_lat = state.vel[0] * lat_x + state.vel[1] * lat_y   # lateral slip speed
-        F_keel = -q * self.WING_AREA * 0.8 * v_lat            # restoring force
+        v_lat = state.vel[0] * lat_x + state.vel[1] * lat_y
+        F_keel = -(q / max(v_act, self.MIN_SPEED)) * self.WING_AREA * 0.2 * v_lat
         kx = F_keel * lat_x
         ky = F_keel * lat_y
 
