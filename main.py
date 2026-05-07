@@ -73,7 +73,7 @@ _trained_pilot      = None     # frozen AcrorPolicy set by training thread
 # ============================================================
 
 N_ENVS           = 4
-N_STEPS          = 256
+N_STEPS          = 512   # was 256 — too few complete episodes per rollout
 STEPS_PER_UPDATE = N_ENVS * N_STEPS
 
 
@@ -84,9 +84,9 @@ def _make_ppo(env_cls, env_kwargs=None):
         "MlpPolicy", vec,
         n_steps       = N_STEPS,
         batch_size    = 128,
-        ent_coef      = 0.01,
+        ent_coef      = 0.05,   # was 0.01 — needs more exploration early on
         learning_rate = 3e-4,
-        policy_kwargs = dict(net_arch=[128, 128]),
+        policy_kwargs = dict(net_arch=[256, 256]),  # was [128,128] — underpowered
         verbose       = 0,
     )
 

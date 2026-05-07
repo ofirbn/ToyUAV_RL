@@ -88,10 +88,10 @@ class PilotageEnv(gym.Env):
 
         # obs = flight state (11) + scenario one-hot (6) = 17-D
         obs_high = np.array([
-            20, 700,                          # airspeed, altitude
-            math.pi/2, math.pi, math.pi*2,   # pitch, roll, yaw
+            30, 700,                          # airspeed (30 m/s ceiling), altitude
+            math.pi/2, math.pi, math.pi,     # pitch, roll, yaw (yaw normalised to ±π)
             6, 6, 6,                          # angular rates
-            20, math.pi/2, math.pi,          # target speed, pitch, roll
+            30, math.pi/2, math.pi,          # target speed, pitch, roll
             *([1.0] * n_sc),                 # scenario one-hot
         ], dtype=np.float32)
 
@@ -212,9 +212,10 @@ class PilotageEnv(gym.Env):
 
     def _obs(self):
         s = self._state
+        yaw = math.atan2(math.sin(s.yaw), math.cos(s.yaw))  # wrap to [-π, π]
         return np.concatenate([
             [s.airspeed, s.pos[2],
-             s.pitch, s.roll, s.yaw,
+             s.pitch, s.roll, yaw,
              s.pitch_rate, s.roll_rate, s.yaw_rate,
              self._cmd[0], self._cmd[1], self._cmd[2]],
             self._scenario_onehot(),
@@ -283,7 +284,9 @@ class PilotageEnv(gym.Env):
             pitch_err = abs(s.pitch)      / (math.pi / 2)   # 0–1
             roll_err  = abs(s.roll)       / math.pi
             rate_pen  = (abs(s.pitch_rate) + abs(s.roll_rate)) / 8.0
-            r  = 1.0 - pitch_err - roll_err - rate_pen
+            # small speed penalty so throttle weights get gradient from day one
+            speed_pen = max(0.0, 8.0 - s.airspeed) / 8.0
+            r  = 1.0 - pitch_err - roll_err - rate_pen - 0.25 * speed_pen
             r  = float(np.clip(r, -1.0, 1.0))
             if abs(s.pitch) < math.radians(5) and abs(s.roll) < math.radians(10):
                 r += 10.0

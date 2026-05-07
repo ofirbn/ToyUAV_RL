@@ -140,8 +140,10 @@ class AircraftPhysics:
             CL      = CL_peak * max(0.0, 1.0 - 2.5 * excess)
         CL = float(np.clip(CL, -0.2, 2.2))
 
-        # FIX 3: CD spikes post-stall, rapidly killing airspeed
-        CD = 0.025 + 0.08 * alpha ** 2 + 0.04 * state.flap_pos
+        # Drag uses CL² induced term (physically correct) + higher CD0 so that
+        # cruise requires ~30-35% throttle rather than ~5% (which made the tanh
+        # output centre of 50% wildly wrong, preventing throttle from being learned).
+        CD = 0.08 + 0.06 * CL ** 2 + 0.04 * state.flap_pos
         if alpha > self.STALL_ALPHA:
             CD += 0.8 * (alpha - self.STALL_ALPHA)
 
