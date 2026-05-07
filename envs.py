@@ -123,7 +123,7 @@ class PilotageEnv(gym.Env):
         yaw = float(np.random.uniform(-math.pi, math.pi))
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
-            vel=np.array([math.sin(yaw)*-spd, math.cos(yaw)*-spd, 0.0]),
+            vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
             pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=0.30,
         )
         self._target = {'speed': spd, 'alt': alt, 'yaw': yaw}
@@ -167,7 +167,7 @@ class PilotageEnv(gym.Env):
         bank    *= math.copysign(1, d_yaw)
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
-            vel=np.array([math.sin(yaw0)*-spd, math.cos(yaw0)*-spd, 0.0]),
+            vel=np.array([math.sin(yaw0)*spd, -math.cos(yaw0)*spd, 0.0]),
             pitch=0.0, roll=0.0, yaw=yaw0, throttle_pos=0.30,
         )
         tgt_yaw = yaw0 + math.radians(d_yaw)
