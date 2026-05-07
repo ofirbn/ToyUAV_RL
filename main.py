@@ -151,9 +151,7 @@ def _training_worker(mode: str):
         unlocked     = [curriculum[0]]                 # start with easiest only
         cur_idx      = 0
         PHASE_WINDOW = 30    # updates before checking phase convergence
-        # reward threshold per phase (normalised scale → expect ~0.5 per step
-        # × 400 steps = ~200 max; threshold = 120 = decent competence)
-        PHASE_THRESHOLD = 80.0
+        PHASE_THRESHOLD = 120.0  # ~30% of max episode reward — basic competence
 
         while not _stop.is_set() and total_ts < PilotageEnv.MAX_TIMESTEPS:
 
@@ -204,6 +202,49 @@ def _training_worker(mode: str):
             else:
                 print("[CURRICULUM] All scenarios unlocked and trained.")
                 break
+
+        # ---- Final gate: pilot must reach CONVERGENCE_REWARD on ALL scenarios ----
+        # before its brain is frozen and handed to the landing stage.
+        # The curriculum only requires per-phase competence; this ensures the
+        # complete pilot is genuinely good before landing training begins.
+        if not _stop.is_set():
+            full_env = make_vec_env(
+                PilotageEnv, n_envs=N_ENVS,
+                env_kwargs={'active_scenarios': list(PilotageEnv.SCENARIOS)}
+            )
+            pilotage_model.set_env(full_env)
+            conv_window = deque(maxlen=PilotageEnv.CONVERGENCE_WINDOW)
+            print(f"[PILOTAGE] Final gate: training on all scenarios until "
+                  f"mean reward ≥ {PilotageEnv.CONVERGENCE_REWARD:.0f} "
+                  f"over {PilotageEnv.CONVERGENCE_WINDOW} updates ...")
+
+            while not _stop.is_set() and total_ts < PilotageEnv.MAX_TIMESTEPS:
+                pilotage_model.learn(
+                    total_timesteps     = STEPS_PER_UPDATE,
+                    reset_num_timesteps = False,
+                )
+                total_ts += STEPS_PER_UPDATE
+
+                if pilotage_model.ep_info_buffer:
+                    mean_r = float(np.mean(
+                        [ep['r'] for ep in pilotage_model.ep_info_buffer]
+                    ))
+                    conv_window.append(mean_r)
+
+                _sync_display_policy(pilotage_model)
+                with _stats_lock:
+                    _train_stats['updates']   += 1
+                    _train_stats['timesteps'] += STEPS_PER_UPDATE
+                    _train_stats['scenario']   = PilotageEnv._last_scenario
+
+                if (len(conv_window) == PilotageEnv.CONVERGENCE_WINDOW and
+                        np.mean(conv_window) >= PilotageEnv.CONVERGENCE_REWARD):
+                    print(f"[PILOTAGE] Converged — mean reward "
+                          f"{np.mean(conv_window):.1f} → advancing to landing")
+                    break
+
+            if total_ts >= PilotageEnv.MAX_TIMESTEPS:
+                print("[PILOTAGE] Timestep cap reached — advancing with best pilot so far")
 
         pilotage_model.save(PILOTAGE_PATH)
         print("[TRAIN] Pilotage model saved →", PILOTAGE_PATH)
@@ -782,17 +823,21 @@ while True:
     sc_name     = scenario.replace('_', ' ').upper() if scenario else '---'
     pitch_deg   = math.degrees(pitch)
     roll_deg    = math.degrees(roll)
+    throttle_pct = int(_s.throttle_pos * 100) if _s else 0
+    tgt_spd      = float(_disp_env._cmd[0]) if hasattr(_disp_env, '_cmd') else 0.0
 
     if is_pilotage:
         hud = [
-            (f"RL  {stage_label}",                   (100,200,255)),
-            (f"SCENARIO:  {sc_name}",                (180,180,255)),
-            ("",                                      WHITE),
+            (f"RL  {stage_label}",                        (100,200,255)),
+            (f"SCENARIO:  {sc_name}",                     (180,180,255)),
+            ("",                                           WHITE),
             (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s", WHITE),
-            (f"ALTITUDE:  {pos[2]:6.1f} m",           WHITE),
-            (f"PITCH:     {pitch_deg:+6.1f}°",        WHITE),
-            (f"BANK:      {roll_deg:+6.1f}°",         WHITE),
-            ("",                                      WHITE),
+            (f"TGT SPEED: {tgt_spd:6.2f} m/s",            (180,255,180)),
+            (f"THROTTLE:  {throttle_pct:5d} %",            (255,220,80)),
+            (f"ALTITUDE:  {pos[2]:6.1f} m",                WHITE),
+            (f"PITCH:     {pitch_deg:+6.1f}°",             WHITE),
+            (f"BANK:      {roll_deg:+6.1f}°",              WHITE),
+            ("",                                           WHITE),
             (f"EPISODES:  {_disp_episodes}",          WHITE),
             (f"UPDATES:   {updates}",                 WHITE),
             (f"TIMESTEPS: {timesteps:,}",             WHITE),
