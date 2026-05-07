@@ -76,6 +76,14 @@ class AircraftPhysics:
     ROLL_DAMP  = 2.5
     YAW_DAMP   = 1.2
 
+    # ---- static stability (restoring moments) ----
+    # Without these the aircraft is pitch/roll neutral: a held input spins
+    # forever instead of settling at a trim angle.  With them, elevator and
+    # aileron act as angle commands: trim_pitch = elevator * ELEV_GAIN/PITCH_STAB
+    # and trim_roll = aileron * AIL_GAIN/ROLL_STAB.
+    PITCH_STAB = 2.0    # = ELEV_GAIN  →  elevator 0.15 trims to 0.15 rad pitch
+    ROLL_STAB  = 3.5    # = AIL_GAIN   →  aileron  0.30 trims to 0.30 rad bank
+
     # ---- actuator lags (time constant, s⁻¹) ----
     THROTTLE_LAG = 3.0   # throttle responds quickly
     FLAP_LAG     = 0.8   # flaps deploy slowly
@@ -108,9 +116,11 @@ class AircraftPhysics:
         q       = 0.5 * self.RHO * v_act ** 2  # actual speed — zero lift at zero airspeed
         q_ratio = q / self.Q_REF   # 1.0 at 10 m/s, ~0.25 at 5 m/s
 
-        # --- angular dynamics: gains scale with q_ratio ---
-        p_acc = elevator * self.ELEV_GAIN * q_ratio - self.PITCH_DAMP * state.pitch_rate
-        r_acc = aileron  * self.AIL_GAIN  * q_ratio - self.ROLL_DAMP  * state.roll_rate
+        # --- angular dynamics: gains + restoring moments scale with q_ratio ---
+        p_acc = (elevator * self.ELEV_GAIN - self.PITCH_STAB * state.pitch) * q_ratio \
+                - self.PITCH_DAMP * state.pitch_rate
+        r_acc = (aileron  * self.AIL_GAIN  - self.ROLL_STAB  * state.roll)  * q_ratio \
+                - self.ROLL_DAMP  * state.roll_rate
         y_acc = rudder   * self.RUDD_GAIN * q_ratio - self.YAW_DAMP   * state.yaw_rate
 
         state.pitch_rate += p_acc * dt
