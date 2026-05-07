@@ -417,7 +417,7 @@ def draw_runway():
 # DRAW PLANE
 # ============================================================
 
-def draw_plane(pos, vel, yaw=None):
+def draw_plane(pos, vel, yaw=None, roll=0.0, pitch=0.0):
     # ground shadow
     shadow = project(np.array([pos[0], pos[1], 0.0]))
     if shadow:
@@ -433,21 +433,30 @@ def draw_plane(pos, vel, yaw=None):
 
     size = 9
     local = {
-        "nose": np.array([0,   -size*2.5, 0]),
-        "tail": np.array([0,    size*2,   0]),
-        "lw":   np.array([-size*4.5, 0,  0]),
-        "rw":   np.array([ size*4.5, 0,  0]),
-        "lwt":  np.array([-size*3.5, size*0.6, 0]),
-        "rwt":  np.array([ size*3.5, size*0.6, 0]),
-        "fin":  np.array([0,    size*1.8,  size*2.0]),
+        "nose": np.array([0,        -size*2.5, 0        ]),
+        "tail": np.array([0,         size*2,   0        ]),
+        "lw":   np.array([-size*4.5, 0,        0        ]),
+        "rw":   np.array([ size*4.5, 0,        0        ]),
+        "lwt":  np.array([-size*3.5, size*0.6, 0        ]),
+        "rwt":  np.array([ size*3.5, size*0.6, 0        ]),
+        "fin":  np.array([0,         size*1.8,  size*2.0 ]),
     }
+
+    cy, sy = math.cos(yaw),   math.sin(yaw)
+    cr, sr = math.cos(roll),  math.sin(roll)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+
+    # Full 3-axis rotation: R_yaw @ R_roll @ R_pitch
+    # Roll tilts the wings around the nose-tail axis;
+    # Pitch raises/lowers the nose around the lateral axis.
     rot = np.array([
-        [math.cos(yaw), -math.sin(yaw), 0],
-        [math.sin(yaw),  math.cos(yaw), 0],
-        [0, 0, 1],
+        [ cy*cr,  cy*sr*sp - sy*cp,  cy*sr*cp + sy*sp],
+        [ sy*cr,  sy*sr*sp + cy*cp,  sy*sr*cp - cy*sp],
+        [-sr,     cr*sp,              cr*cp            ],
     ])
-    world = {k: pos + rot @ v for k,v in local.items()}
-    proj  = {k: project(v)    for k,v in world.items()}
+
+    world = {k: pos + rot @ v for k, v in local.items()}
+    proj  = {k: project(v)    for k, v in world.items()}
 
     if proj["nose"] and proj["tail"]:
         pygame.draw.line(screen, (0,80,120),   proj["nose"], proj["tail"], 14)
@@ -699,9 +708,12 @@ while True:
             _disp_obs, _ = _disp_env.reset()
             _disp_episodes += 1
 
-    pos = _disp_env.pos.astype(float)
-    vel = _disp_env.vel.astype(float)
-    yaw = _disp_env._state.yaw if hasattr(_disp_env, '_state') else None
+    pos   = _disp_env.pos.astype(float)
+    vel   = _disp_env.vel.astype(float)
+    _s    = _disp_env._state if hasattr(_disp_env, '_state') else None
+    yaw   = _s.yaw   if _s else None
+    roll  = _s.roll  if _s else 0.0
+    pitch = _s.pitch if _s else 0.0
 
     # --------------------------------------------------------
     # BACKGROUND
@@ -743,7 +755,7 @@ while True:
                 survivors.append(p)
         _crash_parts[:] = survivors
     else:
-        draw_plane(pos, vel, yaw)
+        draw_plane(pos, vel, yaw, roll, pitch)
 
     # --------------------------------------------------------
     # HUD
@@ -768,9 +780,8 @@ while True:
 
     is_pilotage = (_disp_env is _pilot_disp_env)
     sc_name     = scenario.replace('_', ' ').upper() if scenario else '---'
-    s           = _disp_env._state if hasattr(_disp_env, '_state') else None
-    pitch_deg   = math.degrees(s.pitch) if s else 0.0
-    roll_deg    = math.degrees(s.roll)  if s else 0.0
+    pitch_deg   = math.degrees(pitch)
+    roll_deg    = math.degrees(roll)
 
     if is_pilotage:
         hud = [
