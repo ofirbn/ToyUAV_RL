@@ -164,7 +164,7 @@ def _training_worker(mode: str):
 
             phase_window = deque(maxlen=PHASE_WINDOW)
             phase_ts     = 0
-            PHASE_CAP    = STEPS_PER_UPDATE * 200     # max steps per phase
+            PHASE_CAP    = 200_000     # max steps per phase (fixed, not a multiple of update size)
 
             print(f"[CURRICULUM] Phase {cur_idx+1}/{len(curriculum)}: "
                   f"{unlocked}")

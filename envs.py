@@ -89,9 +89,10 @@ class PilotageEnv(gym.Env):
         # obs = flight state (11) + scenario one-hot (6) = 17-D
         obs_high = np.array([
             30, 700,                          # airspeed (30 m/s ceiling), altitude
-            math.pi/2, math.pi, math.pi,     # pitch, roll, yaw (yaw normalised to ±π)
+            math.pi/2, math.pi, math.pi,     # pitch, roll, yaw (normalised to ±π)
             6, 6, 6,                          # angular rates
             30, math.pi/2, math.pi,          # target speed, pitch, roll
+            1.0,                             # throttle_pos — gives closed-loop feedback
             *([1.0] * n_sc),                 # scenario one-hot
         ], dtype=np.float32)
 
@@ -123,7 +124,7 @@ class PilotageEnv(gym.Env):
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
             vel=np.array([math.sin(yaw)*-spd, math.cos(yaw)*-spd, 0.0]),
-            pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=0.55,
+            pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=0.30,
         )
         self._target = {'speed': spd, 'alt': alt, 'yaw': yaw}
         self._cmd = np.array([spd, 0.0, 0.0])
@@ -137,7 +138,7 @@ class PilotageEnv(gym.Env):
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt0]),
             vel=np.array([0.0, -spd, 0.0]),
-            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.65,
+            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.40,
         )
         self._target = {'alt': alt0 + d_alt, 'rate': rate}
         self._cmd = np.array([spd, tgt_pitch, 0.0])
@@ -151,7 +152,7 @@ class PilotageEnv(gym.Env):
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt0]),
             vel=np.array([0.0, -spd, 0.0]),
-            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.45,
+            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.25,
         )
         self._target = {'alt': alt0 - d_alt, 'rate': rate}
         self._cmd = np.array([spd, tgt_pitch, 0.0])
@@ -167,7 +168,7 @@ class PilotageEnv(gym.Env):
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
             vel=np.array([math.sin(yaw0)*-spd, math.cos(yaw0)*-spd, 0.0]),
-            pitch=0.0, roll=0.0, yaw=yaw0, throttle_pos=0.55,
+            pitch=0.0, roll=0.0, yaw=yaw0, throttle_pos=0.30,
         )
         tgt_yaw = yaw0 + math.radians(d_yaw)
         self._target = {'yaw': tgt_yaw, 'alt': alt}
@@ -177,11 +178,11 @@ class PilotageEnv(gym.Env):
         alt  = float(np.random.uniform(100, 400))
         spd0 = float(np.random.uniform(8, 10))
         spd1 = spd0 + float(np.random.choice([-1,1])) * float(np.random.uniform(2, 4))
-        spd1 = float(np.clip(spd1, 5.0, 14.0))
+        spd1 = float(np.clip(spd1, 7.5, 14.0))  # 7.5 > stall speed (~6.7 m/s)
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
             vel=np.array([0.0, -spd0, 0.0]),
-            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.5,
+            pitch=0.0, roll=0.0, yaw=0.0, throttle_pos=0.30,
         )
         self._target = {'speed': spd1, 'alt': alt}
         self._cmd = np.array([spd1, 0.0, 0.0])
@@ -195,7 +196,7 @@ class PilotageEnv(gym.Env):
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
             vel=np.array([0.0, -spd, 0.0]),
-            pitch=pitch, roll=roll, yaw=0.0, throttle_pos=0.5,
+            pitch=pitch, roll=roll, yaw=0.0, throttle_pos=0.30,
         )
         self._target = {'pitch': 0.0, 'roll': 0.0, 'alt': alt}
         self._cmd = np.array([spd, 0.0, 0.0])   # recover to wings-level
@@ -217,7 +218,8 @@ class PilotageEnv(gym.Env):
             [s.airspeed, s.pos[2],
              s.pitch, s.roll, yaw,
              s.pitch_rate, s.roll_rate, s.yaw_rate,
-             self._cmd[0], self._cmd[1], self._cmd[2]],
+             self._cmd[0], self._cmd[1], self._cmd[2],
+             s.throttle_pos],              # closed-loop throttle feedback
             self._scenario_onehot(),
         ]).astype(np.float32)
 
@@ -237,7 +239,7 @@ class PilotageEnv(gym.Env):
         sc = self._scenario
 
         if sc == 'straight_level':
-            speed_err = abs(s.airspeed - self._target['speed']) / 6.0      # norm by max plausible err
+            speed_err = abs(s.airspeed - self._target['speed']) / 10.0     # wider norm — old 6 saturated at 17 m/s eq
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
             r  =  1.0 - speed_err - alt_err
             r -= abs(s.roll)  / math.pi         # 0–1 range
@@ -272,7 +274,7 @@ class PilotageEnv(gym.Env):
                 r += 10.0
 
         elif sc == 'speed_change':
-            speed_err = abs(s.airspeed - self._target['speed']) / 6.0
+            speed_err = abs(s.airspeed - self._target['speed']) / 10.0
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
             r  = 1.0 - speed_err - alt_err
             r -= abs(s.roll) / math.pi
@@ -430,14 +432,15 @@ class LandingEnv(gym.Env):
 
     def _pilot_obs(self, cmd):
         s = self._state
+        yaw = math.atan2(math.sin(s.yaw), math.cos(s.yaw))
         base = np.array([
             s.airspeed, s.pos[2],
-            s.pitch, s.roll, s.yaw,
+            s.pitch, s.roll, yaw,
             s.pitch_rate, s.roll_rate, s.yaw_rate,
             cmd[0], cmd[1], cmd[2],
+            s.throttle_pos,           # must match PilotageEnv._obs() layout
         ], dtype=np.float32)
-        # pilotage policy was trained with 17-D obs (11 state + 6 scenario one-hot);
-        # pad zeros — no active scenario when used as a command-follower
+        # pad zeros for scenario one-hot (no active scenario in landing mode)
         return np.concatenate([base, np.zeros(len(PilotageEnv.SCENARIOS), dtype=np.float32)])
 
     # ---- gym interface ----
