@@ -118,20 +118,23 @@ class PilotageEnv(gym.Env):
     # ----------------------------------------------------------
 
     def _init_straight_level(self):
-        spd = float(np.random.uniform(8, 13))
-        alt = float(np.random.uniform(80, 400))
-        yaw = float(np.random.uniform(-math.pi, math.pi))
-        # trim pitch: angle of attack needed so lift = weight at this speed
-        q = 0.5 * 1.225 * spd ** 2
-        cl_trim = (2.5 * 9.81) / (q * 0.40)
+        target_spd = float(np.random.uniform(9, 13))
+        alt        = float(np.random.uniform(80, 400))
+        yaw        = float(np.random.uniform(-math.pi, math.pi))
+        # Start 10-20% below target so step-0 speed_err is non-zero and throttle
+        # has an immediate gradient.  Not too far below so descent during
+        # acceleration is still manageable.
+        start_spd  = target_spd * float(np.random.uniform(0.80, 0.90))
+        q = 0.5 * 1.225 * target_spd ** 2
+        cl_trim    = (2.5 * 9.81) / (q * 0.40)
         pitch_trim = float(np.clip((cl_trim - 0.4) / 4.0, 0.05, 0.30))
         self._state = AircraftState(
             pos=np.array([0.0, 200.0, alt]),
-            vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
-            pitch=pitch_trim, roll=0.0, yaw=yaw, throttle_pos=0.30,
+            vel=np.array([math.sin(yaw)*start_spd, -math.cos(yaw)*start_spd, 0.0]),
+            pitch=pitch_trim, roll=0.0, yaw=yaw, throttle_pos=0.25,
         )
-        self._target = {'speed': spd, 'alt': alt, 'yaw': yaw}
-        self._cmd = np.array([spd, pitch_trim, 0.0])
+        self._target = {'speed': target_spd, 'alt': alt, 'yaw': yaw}
+        self._cmd = np.array([target_spd, pitch_trim, 0.0])
 
     def _init_rate_climb(self):
         spd   = float(np.random.uniform(9, 13))
@@ -243,13 +246,11 @@ class PilotageEnv(gym.Env):
         sc = self._scenario
 
         if sc == 'straight_level':
-            speed_err = abs(s.airspeed - self._target['speed']) / 10.0
-            alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
-            r  =  1.0 - speed_err - alt_err
+            speed_err = abs(s.airspeed - self._target['speed']) / 5.0
+            alt_err   = abs(s.pos[2]   - self._target['alt'])   / 40.0
+            vz_pen    = abs(float(s.vel[2])) * 0.05  # mild: penalise descent/oscillation
+            r  =  1.0 - speed_err - alt_err - vz_pen
             r -= abs(s.roll) / math.pi
-            # NO pitch penalty: trim pitch at 8-12 m/s is 8-17° — penalising it
-            # taught the policy to fly pitch=0 (falling) to score r=1.0 instead of
-            # using the ~0.15 rad needed for level flight (which scored r=0.905).
             r  = float(np.clip(r, -1.0, 1.0))
 
         elif sc == 'rate_climb':
@@ -280,7 +281,7 @@ class PilotageEnv(gym.Env):
                 r += 10.0
 
         elif sc == 'speed_change':
-            speed_err = abs(s.airspeed - self._target['speed']) / 10.0
+            speed_err = abs(s.airspeed - self._target['speed']) / 5.0
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
             r  = 1.0 - speed_err - alt_err
             r -= abs(s.roll) / math.pi
