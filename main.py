@@ -118,14 +118,11 @@ def _training_worker(mode: str):
 
     os.makedirs(MODELS_DIR, exist_ok=True)
 
-    # ---- Stage 1: Pilotage ----
+    # ---- Stage 1: Pilotage (goal-conditioned, no curriculum) ----
 
     if mode == "scratch":
-        # start with first curriculum scenario only
-        pilotage_model = _make_ppo(
-            PilotageEnv, env_kwargs={'active_scenarios': [PilotageEnv.CURRICULUM[0]]}
-        )
-        print("[TRAIN] Pilotage: training from scratch (curriculum)")
+        pilotage_model = _make_ppo(PilotageEnv)
+        print("[TRAIN] Pilotage: training from scratch (goal-conditioned)")
     else:
         pilotage_model = PPO.load(
             PILOTAGE_PATH,
@@ -133,8 +130,6 @@ def _training_worker(mode: str):
         )
         print("[TRAIN] Pilotage: loaded from", PILOTAGE_PATH)
 
-    # Stage 1: expose pilotage policy — now correct because the display will
-    # use PilotageEnv (11-D obs) during this stage, not LandingEnv.
     with _policy_lock:
         _display_policy = _clone_policy(pilotage_model.policy)
         _display_policy.set_training_mode(False)
@@ -144,107 +139,39 @@ def _training_worker(mode: str):
         _train_stats['stage'] = 'pilotage'
 
     if mode != "load_only":
-        total_ts = 0
-
-        # ---- Curriculum: add one scenario at a time in difficulty order ----
-        curriculum   = PilotageEnv.CURRICULUM          # ordered easy → hard
-        unlocked     = [curriculum[0]]                 # start with easiest only
-        cur_idx      = 0
-        PHASE_WINDOW = 30    # updates before checking phase convergence
-        PHASE_THRESHOLD = 120.0  # ~30% of max episode reward — basic competence
+        total_ts    = 0
+        conv_window = deque(maxlen=PilotageEnv.CONVERGENCE_WINDOW)
+        print(f"[PILOTAGE] Training until mean reward ≥ "
+              f"{PilotageEnv.CONVERGENCE_REWARD} over "
+              f"{PilotageEnv.CONVERGENCE_WINDOW} updates ...")
 
         while not _stop.is_set() and total_ts < PilotageEnv.MAX_TIMESTEPS:
-
-            # rebuild vec_env with current unlocked scenario set
-            cur_env = make_vec_env(
-                PilotageEnv, n_envs=N_ENVS,
-                env_kwargs={'active_scenarios': unlocked}
+            pilotage_model.learn(
+                total_timesteps     = STEPS_PER_UPDATE,
+                reset_num_timesteps = False,
             )
-            pilotage_model.set_env(cur_env)
+            total_ts += STEPS_PER_UPDATE
 
-            phase_window = deque(maxlen=PHASE_WINDOW)
-            phase_ts     = 0
-            PHASE_CAP    = 200_000     # max steps per phase (fixed, not a multiple of update size)
+            if pilotage_model.ep_info_buffer:
+                mean_r = float(np.mean(
+                    [ep['r'] for ep in pilotage_model.ep_info_buffer]
+                ))
+                conv_window.append(mean_r)
 
-            print(f"[CURRICULUM] Phase {cur_idx+1}/{len(curriculum)}: "
-                  f"{unlocked}")
+            _sync_display_policy(pilotage_model)
+            with _stats_lock:
+                _train_stats['updates']   += 1
+                _train_stats['timesteps'] += STEPS_PER_UPDATE
+                _train_stats['scenario']   = PilotageEnv._last_scenario
 
-            while not _stop.is_set() and phase_ts < PHASE_CAP:
-                pilotage_model.learn(
-                    total_timesteps     = STEPS_PER_UPDATE,
-                    reset_num_timesteps = False,
-                )
-                total_ts  += STEPS_PER_UPDATE
-                phase_ts  += STEPS_PER_UPDATE
-
-                if pilotage_model.ep_info_buffer:
-                    mean_r = float(np.mean(
-                        [ep['r'] for ep in pilotage_model.ep_info_buffer]
-                    ))
-                    phase_window.append(mean_r)
-
-                _sync_display_policy(pilotage_model)
-                with _stats_lock:
-                    _train_stats['updates']   += 1
-                    _train_stats['timesteps'] += STEPS_PER_UPDATE
-                    _train_stats['scenario']   = PilotageEnv._last_scenario
-
-                if (len(phase_window) == PHASE_WINDOW and
-                        np.mean(phase_window) >= PHASE_THRESHOLD):
-                    print(f"[CURRICULUM] Phase {cur_idx+1} converged "
-                          f"(mean r {np.mean(phase_window):.1f}) — unlocking next")
-                    break
-
-            # unlock next scenario if available
-            cur_idx += 1
-            if cur_idx < len(curriculum):
-                unlocked.append(curriculum[cur_idx])
-            else:
-                print("[CURRICULUM] All scenarios unlocked and trained.")
+            if (len(conv_window) == PilotageEnv.CONVERGENCE_WINDOW and
+                    np.mean(conv_window) >= PilotageEnv.CONVERGENCE_REWARD):
+                print(f"[PILOTAGE] Converged — mean reward "
+                      f"{np.mean(conv_window):.1f} → advancing to landing")
                 break
 
-        # ---- Final gate: pilot must reach CONVERGENCE_REWARD on ALL scenarios ----
-        # before its brain is frozen and handed to the landing stage.
-        # The curriculum only requires per-phase competence; this ensures the
-        # complete pilot is genuinely good before landing training begins.
-        if not _stop.is_set():
-            full_env = make_vec_env(
-                PilotageEnv, n_envs=N_ENVS,
-                env_kwargs={'active_scenarios': list(PilotageEnv.SCENARIOS)}
-            )
-            pilotage_model.set_env(full_env)
-            conv_window = deque(maxlen=PilotageEnv.CONVERGENCE_WINDOW)
-            print(f"[PILOTAGE] Final gate: training on all scenarios until "
-                  f"mean reward ≥ {PilotageEnv.CONVERGENCE_REWARD:.0f} "
-                  f"over {PilotageEnv.CONVERGENCE_WINDOW} updates ...")
-
-            while not _stop.is_set() and total_ts < PilotageEnv.MAX_TIMESTEPS:
-                pilotage_model.learn(
-                    total_timesteps     = STEPS_PER_UPDATE,
-                    reset_num_timesteps = False,
-                )
-                total_ts += STEPS_PER_UPDATE
-
-                if pilotage_model.ep_info_buffer:
-                    mean_r = float(np.mean(
-                        [ep['r'] for ep in pilotage_model.ep_info_buffer]
-                    ))
-                    conv_window.append(mean_r)
-
-                _sync_display_policy(pilotage_model)
-                with _stats_lock:
-                    _train_stats['updates']   += 1
-                    _train_stats['timesteps'] += STEPS_PER_UPDATE
-                    _train_stats['scenario']   = PilotageEnv._last_scenario
-
-                if (len(conv_window) == PilotageEnv.CONVERGENCE_WINDOW and
-                        np.mean(conv_window) >= PilotageEnv.CONVERGENCE_REWARD):
-                    print(f"[PILOTAGE] Converged — mean reward "
-                          f"{np.mean(conv_window):.1f} → advancing to landing")
-                    break
-
-            if total_ts >= PilotageEnv.MAX_TIMESTEPS:
-                print("[PILOTAGE] Timestep cap reached — advancing with best pilot so far")
+        if total_ts >= PilotageEnv.MAX_TIMESTEPS:
+            print("[PILOTAGE] Timestep cap — advancing with best pilot so far")
 
         pilotage_model.save(PILOTAGE_PATH)
         print("[TRAIN] Pilotage model saved →", PILOTAGE_PATH)
@@ -337,7 +264,7 @@ _train_thread.start()
 
 # Stage 1 display: PilotageEnv  (11-D obs, no runway)
 # Stage 2 display: LandingEnv   (7-D obs, with runway)
-_pilot_disp_env = PilotageEnv(active_scenarios=PilotageEnv.SCENARIOS)
+_pilot_disp_env = PilotageEnv()
 
 _tmp_pilotage = PPO("MlpPolicy", PilotageEnv(), verbose=0).policy
 _tmp_pilotage.set_training_mode(False)
@@ -819,24 +746,26 @@ while True:
         'done':     "TRAINING COMPLETE",
     }.get(stage, stage.upper())
 
-    is_pilotage = (_disp_env is _pilot_disp_env)
-    sc_name     = scenario.replace('_', ' ').upper() if scenario else '---'
-    pitch_deg   = math.degrees(pitch)
-    roll_deg    = math.degrees(roll)
+    is_pilotage  = (_disp_env is _pilot_disp_env)
+    sc_name      = scenario.replace('_', ' ').upper() if scenario else '---'
+    pitch_deg    = math.degrees(pitch)
+    roll_deg     = math.degrees(roll)
     throttle_pct = int(_s.throttle_pos * 100) if _s else 0
-    tgt_spd      = float(_disp_env._cmd[0]) if hasattr(_disp_env, '_cmd') else 0.0
     horiz_spd    = float(math.sqrt(vel[0]**2 + vel[1]**2))
     vert_spd     = float(vel[2])
+    cmd          = _disp_env._cmd if hasattr(_disp_env, '_cmd') else np.zeros(5)
 
     if is_pilotage:
+        tgt_spd = float(cmd[0]); tgt_alt = float(cmd[1]); tgt_vz = float(cmd[2])
         hud = [
             (f"RL  {stage_label}",                          (100,200,255)),
-            (f"SCENARIO:  {sc_name}",                       (180,180,255)),
+            (f"MODE:      {sc_name}",                       (180,180,255)),
             ("",                                             WHITE),
             (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s",  WHITE),
             (f"HORIZ SPD: {horiz_spd:6.2f} m/s",            (200,230,255)),
             (f"VERT SPD:  {vert_spd:+6.2f} m/s",            (255,180,100) if vert_spd < -0.5 else WHITE),
             (f"TGT SPEED: {tgt_spd:6.2f} m/s",              (180,255,180)),
+            (f"TGT ALT:   {tgt_alt:6.1f} m  vz={tgt_vz:+.1f}", (180,255,180)),
             (f"THROTTLE:  {throttle_pct:5d} %",              (255,220,80)),
             (f"ALTITUDE:  {pos[2]:6.1f} m",                  WHITE),
             (f"PITCH:     {pitch_deg:+6.1f}°",               WHITE),
