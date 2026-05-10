@@ -870,23 +870,36 @@ while True:
     STATUS_COL = {'converged': (80,255,120), 'timeout': (255,140,40), 'training': (255,220,80)}
 
     if is_pilotage:
-        tgt_spd = float(cmd[0]); tgt_alt = float(cmd[1])
+        tgt_spd  = float(cmd[0])
+        tgt_alt  = float(cmd[1])
+        tgt_vz   = float(cmd[2])
+        tgt_yaw  = float(cmd[3])
+        tgt_roll = float(cmd[4])
+        cur_spd  = float(np.linalg.norm(vel))
+        cur_yaw  = math.atan2(math.sin(yaw or 0), math.cos(yaw or 0)) if yaw is not None else 0.0
+
+        def _gcol(err, thresh):
+            """Green when error < thresh, red when > 3x thresh."""
+            return (80,255,120) if err < thresh else (255,80,80) if err > 3*thresh else (255,220,80)
+
         mode_hdr = f"{cur_mode.upper()} ({mode_idx}/{mode_total})"
         st_col   = STATUS_COL.get(mode_status, WHITE)
         hud = [
-            (f"RL  {stage_label}",                          (100,200,255)),
-            (f"MODE:      {mode_hdr}",                      (180,180,255)),
-            (f"STATUS:    {mode_status.upper()}",            st_col),
-            (f"REWARD:    {mode_reward:+.3f}",               st_col),
-            (f"MODE STEPS:{mode_ts:>10,}",                  WHITE),
-            ("",                                             WHITE),
-            (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s",  WHITE),
-            (f"HORIZ SPD: {horiz_spd:6.2f} m/s",            (200,230,255)),
-            (f"VERT SPD:  {vert_spd:+6.2f} m/s",            (255,180,100) if vert_spd < -0.5 else WHITE),
-            (f"TGT SPEED: {tgt_spd:6.2f}  ALT:{tgt_alt:.0f}m", (180,255,180)),
-            (f"THROTTLE:  {throttle_pct:5d} %",              (255,220,80)),
-            (f"ALTITUDE:  {pos[2]:6.1f} m",                  WHITE),
-            ("",                                             WHITE),
+            (f"RL  {stage_label}",                               (100,200,255)),
+            (f"MODE:   {mode_hdr}",                              (180,180,255)),
+            (f"STATUS: {mode_status.upper()}  r={mode_reward:+.2f}", st_col),
+            (f"STEPS:  {mode_ts:,}",                             WHITE),
+            ("── GOAL  now → target ──────────",                (80,80,100)),
+            (f"SPEED:  {cur_spd:5.1f} → {tgt_spd:5.1f} m/s",   _gcol(abs(cur_spd-tgt_spd), 0.5)),
+            (f"ALT:  {pos[2]:6.1f} → {tgt_alt:6.1f} m",        _gcol(abs(pos[2]-tgt_alt), 5)),
+            (f"VSPD:  {vert_spd:+5.2f} → {tgt_vz:+5.2f} m/s",  _gcol(abs(vert_spd-tgt_vz), 0.3)),
+            (f"HDG:  {math.degrees(cur_yaw):+6.1f} → {math.degrees(tgt_yaw):+6.1f}°",
+                                                                  _gcol(abs(math.atan2(math.sin(cur_yaw-tgt_yaw),
+                                                                                       math.cos(cur_yaw-tgt_yaw))), 0.1)),
+            (f"ROLL: {roll_deg:+6.1f} → {math.degrees(tgt_roll):+6.1f}°", _gcol(abs(roll-tgt_roll), 0.1)),
+            ("── ACTUATORS ───────────────────",                 (80,80,100)),
+            (f"THROTTLE: {throttle_pct:3d}%   PITCH: {pitch_deg:+5.1f}°", (255,220,80)),
+            ("",                                                  WHITE),
         ]
         # append completed-mode log (last 4)
         for (m, s, r, ts) in mode_log[-4:]:
