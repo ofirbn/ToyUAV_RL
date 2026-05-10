@@ -136,11 +136,25 @@ class PilotageEnv(gym.Env):
         yaw_err   = abs(math.atan2(math.sin(s.yaw - cmd_yaw),
                                    math.cos(s.yaw - cmd_yaw))) / math.pi * 0.5
         roll_err  = abs(s.roll - cmd_roll) / math.pi
-        # vz_err and vz_pen removed: for climb/descent they contradict each other
-        # (cmd_vz stays fixed but vz should go to 0 once altitude is reached).
-        # alt_err already drives the elevator to maintain/reach altitude.
 
-        r = 1.0 - speed_err - alt_err - yaw_err - roll_err
+        # Mode-aware reward: only include the active term(s).
+        # Inactive terms are excluded — they start at target and the
+        # smoothness penalty discourages unnecessary control use.
+        # Key case: roll_err is excluded from 'turn' because yaw_rate
+        # (needed to turn) directly produces roll in SimplePhysics,
+        # so penalising roll would conflict with the turning objective.
+        sc = self._scenario
+        if sc in ('level', 'speed'):
+            r = 1.0 - speed_err
+        elif sc in ('climb', 'descent'):
+            r = 1.0 - alt_err
+        elif sc == 'turn':
+            r = 1.0 - yaw_err          # no roll_err: turning requires yaw_rate → roll
+        elif sc == 'recovery':
+            r = 1.0 - speed_err - roll_err
+        else:
+            r = 1.0 - speed_err - alt_err - yaw_err - roll_err
+
         r = float(np.clip(r, -1.0, 1.0))
 
         # throttle below cruise minimum → severe penalty
