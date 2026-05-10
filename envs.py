@@ -257,17 +257,19 @@ class PilotageEnv(gym.Env):
 
         # Smoothness penalty — discourages rapid action changes (limit-cycle hunting).
         delta = actuators - self._prev_action
-        reward -= (abs(delta[0]) * 0.4    # throttle  → speed
-                 + abs(delta[1]) * 0.3    # elevator  → altitude
-                 + abs(delta[2]) * 0.3)   # aileron   → heading
+        reward -= (abs(delta[0]) * 0.4    # throttle
+                 + abs(delta[1]) * 0.3    # elevator
+                 + abs(delta[2]) * 0.3    # aileron
+                 + abs(delta[3]) * 0.3)   # rudder
         self._prev_action = actuators.copy()
 
-        # Sustained aileron penalty for non-turn modes.
-        # The delta penalty above only penalises *changes*; a constant aileron
-        # deflection costs nothing and lets the plane spin indefinitely.
-        # In turn mode aileron is the control — don't penalise it there.
+        # Sustained deflection penalty for turning controls in non-turn modes.
+        # The delta penalty only penalises changes; a constant deflection costs
+        # nothing and lets the plane spin freely.  In turn mode these are the
+        # primary controls — don't penalise them there.
         if self._scenario != 'turn':
-            reward -= abs(float(actuators[2])) * 0.25
+            reward -= (abs(float(actuators[2])) * 0.25   # aileron
+                     + abs(float(actuators[3])) * 0.25)  # rudder
 
         done = False
         if not SIMPLE_PHYSICS:
