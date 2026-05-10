@@ -147,7 +147,7 @@ class PilotageEnv(gym.Env):
         if sc in ('level', 'speed'):
             r = 1.0 - speed_err
         elif sc in ('climb', 'descent'):
-            r = 1.0 - alt_err
+            r = 1.0 - alt_err - yaw_err   # hold heading while changing altitude
         elif sc == 'turn':
             r = 1.0 - yaw_err          # no roll_err: turning requires yaw_rate → roll
         elif sc == 'recovery':
