@@ -17,7 +17,14 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 
-from aircraft import AircraftPhysics, AircraftState
+from aircraft import AircraftPhysics, AircraftState, SimplePhysics
+
+# ── Physics toggle ────────────────────────────────────────────────────────────
+# Set True  → arcade kinematics (decoupled, no aero, no gravity).
+#             Use this to verify reward structure and RL convergence first.
+# Set False → full aerodynamic model.
+SIMPLE_PHYSICS = True
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 # ============================================================
@@ -66,7 +73,7 @@ class PilotageEnv(gym.Env):
 
     def __init__(self, active_scenarios=None):  # arg kept for API compat
         super().__init__()
-        self._phys = AircraftPhysics()
+        self._phys = SimplePhysics() if SIMPLE_PHYSICS else AircraftPhysics()
 
         # obs: 10 state + 5 goal = 15-D
         obs_high = np.array([
@@ -149,13 +156,10 @@ class PilotageEnv(gym.Env):
         if mode == 'level':
             target_spd = float(np.random.uniform(9, 13))
             start_spd  = target_spd * float(np.random.uniform(0.80, 0.90))
-            q          = 0.5 * 1.225 * target_spd ** 2
-            pitch_trim = float(np.clip(
-                ((2.5 * 9.81) / (q * 0.4) - 0.4) / 4.0, 0.05, 0.30))
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
                 vel=np.array([math.sin(yaw)*start_spd, -math.cos(yaw)*start_spd, 0.0]),
-                pitch=pitch_trim, roll=0.0, yaw=yaw, throttle_pos=0.25,
+                pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=start_spd / 15.0,
             )
             self._cmd = np.array([target_spd, alt, 0.0, yaw, 0.0])
 
@@ -163,13 +167,10 @@ class PilotageEnv(gym.Env):
             spd   = float(np.random.uniform(9, 13))
             d_alt = float(np.random.uniform(30, 120))
             rate  = float(np.random.uniform(1.5, 4.0))
-            q     = 0.5 * 1.225 * spd ** 2
-            pitch_trim = float(np.clip(
-                ((2.5 * 9.81) / (q * 0.4) - 0.4) / 4.0, 0.05, 0.30))
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
                 vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
-                pitch=pitch_trim, roll=0.0, yaw=yaw, throttle_pos=0.35,
+                pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=spd / 15.0,
             )
             self._cmd = np.array([spd, alt + d_alt, rate, yaw, 0.0])
 
@@ -187,14 +188,14 @@ class PilotageEnv(gym.Env):
         elif mode == 'turn':
             spd   = float(np.random.uniform(9, 13))
             d_yaw = float(np.random.choice([-1, 1])) * float(np.random.uniform(40, 120))
-            bank  = math.copysign(min(math.radians(abs(d_yaw) * 0.25),
-                                      math.radians(35)), d_yaw)
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
                 vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
-                pitch=0.10, roll=0.0, yaw=yaw, throttle_pos=0.30,
+                pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=spd / 15.0,
             )
-            self._cmd = np.array([spd, alt, 0.0, yaw + math.radians(d_yaw), bank])
+            # cmd_roll=0: in simple physics aileron drives yaw directly,
+            # no bank angle needed as intermediate goal
+            self._cmd = np.array([spd, alt, 0.0, yaw + math.radians(d_yaw), 0.0])
 
         elif mode == 'speed':
             spd0 = float(np.random.uniform(8, 10))
@@ -235,10 +236,12 @@ class PilotageEnv(gym.Env):
         reward = self._reward()
 
         done = False
-        if abs(s.pitch) > math.radians(75):
-            reward -= 20.0; done = True
-        if abs(s.roll) > math.radians(100):
-            reward -= 20.0; done = True
+        if not SIMPLE_PHYSICS:
+            # attitude limits only matter with real aerodynamics
+            if abs(s.pitch) > math.radians(75):
+                reward -= 20.0; done = True
+            if abs(s.roll) > math.radians(100):
+                reward -= 20.0; done = True
         if s.pos[2] < 10.0:  done = True
         if s.pos[2] > 700.0: done = True
 

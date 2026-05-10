@@ -209,3 +209,52 @@ class AircraftPhysics:
         state.pos = state.pos + state.vel * dt
 
         return state
+
+
+class SimplePhysics:
+    """
+    Arcade kinematics for reward / learning debugging.
+    Zero aerodynamics, zero gravity, fully decoupled controls.
+
+    throttle [0,1]  → forward speed  0..MAX_SPEED m/s   (first-order lag)
+    elevator [-1,1] → climb rate    -MAX_VZ..MAX_VZ m/s  (first-order lag)
+    aileron  [-1,1] → yaw rate       instant
+
+    If the policy does not learn with this model the reward is wrong.
+    If it does learn, start adding physical complexity back one piece at a time.
+    """
+
+    MAX_SPEED    = 15.0   # m/s forward
+    MAX_VZ       =  5.0   # m/s climb/descent
+    MAX_YAW_RATE =  1.2   # rad/s at full aileron
+    SPD_LAG      =  2.0   # forward speed convergence (1/s)
+    VZ_LAG       =  3.0   # climb rate convergence (1/s)
+
+    def step(self, state: AircraftState, actuators, dt: float = 0.1) -> AircraftState:
+        throttle = float(np.clip(actuators[0],  0.0, 1.0))
+        elevator = float(np.clip(actuators[1], -1.0, 1.0))
+        aileron  = float(np.clip(actuators[2], -1.0, 1.0))
+
+        spd_h = math.sqrt(state.vel[0] ** 2 + state.vel[1] ** 2)
+        cur_vz = float(state.vel[2])
+
+        # Converge horizontal speed and climb rate toward commanded values
+        new_spd = spd_h  + (throttle * self.MAX_SPEED - spd_h)  * self.SPD_LAG * dt
+        new_vz  = cur_vz + (elevator * self.MAX_VZ    - cur_vz) * self.VZ_LAG  * dt
+
+        # Aileron directly drives yaw (no aerodynamic coupling needed)
+        state.yaw += aileron * self.MAX_YAW_RATE * dt
+
+        state.vel[0] =  math.sin(state.yaw) * new_spd
+        state.vel[1] = -math.cos(state.yaw) * new_spd
+        state.vel[2] =  new_vz
+
+        # Cosmetic pitch / roll so the renderer looks right
+        state.pitch = math.atan2(new_vz, max(new_spd, 0.1)) * 0.6
+        state.roll  = aileron * 0.4
+
+        # Keep throttle_pos in sync so the reward's throttle penalty works
+        state.throttle_pos += (throttle - state.throttle_pos) * 4.0 * dt
+
+        state.pos = state.pos + state.vel * dt
+        return state
