@@ -263,15 +263,14 @@ class PilotageEnv(gym.Env):
                  + abs(delta[3]) * 0.3)   # rudder
         self._prev_action = actuators.copy()
 
-        # Sustained deflection penalty for turning controls in non-turn modes.
-        # The delta penalty only penalises changes; a constant deflection costs
-        # nothing and lets the plane spin freely.  In turn mode these are the
-        # primary controls — don't penalise them there.
-        # Weight must be > 0.75 so that constant aileron=0.5 over 400 steps
-        # costs > 150 points — enough to push below the 250 convergence threshold.
-        if self._scenario != 'turn':
-            reward -= (abs(float(actuators[2])) * 0.8   # aileron
-                     + abs(float(actuators[3])) * 0.8)  # rudder
+        # Sustained deflection penalties — constant non-zero inputs that the
+        # delta penalty misses (delta=0 once settled at any fixed value).
+        sc = self._scenario
+        if sc != 'turn':
+            reward -= (abs(float(actuators[2])) * 0.8    # aileron  (spinning)
+                     + abs(float(actuators[3])) * 0.8)   # rudder   (spinning)
+        if sc not in ('climb', 'descent'):
+            reward -= abs(float(actuators[1])) * 0.8     # elevator (climbing/diving when not needed)
 
         done = False
         if not SIMPLE_PHYSICS:
