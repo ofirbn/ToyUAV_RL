@@ -319,15 +319,48 @@ pygame.display.set_caption("RL Fixed Wing UAV — Hierarchical DRL")
 clock  = pygame.time.Clock()
 font   = pygame.font.SysFont("Consolas", 22)
 
-CAMERA_POS    = np.array([-250, -250, 180], dtype=float)
-CAMERA_TARGET = np.array([   0,  300,   0], dtype=float)
-FOV = 800
+CAMERA_POS = np.array([-250, -250, 180], dtype=float)
+FOV        = 800
 
-_cf = CAMERA_TARGET - CAMERA_POS
-_cf = _cf / np.linalg.norm(_cf)
-_cr = np.cross(_cf, np.array([0, 0, 1], dtype=float))
-_cr = _cr / np.linalg.norm(_cr)
-_cu = np.cross(_cr, _cf)
+# Smoothed look-at point — updated every frame to track the plane.
+# Exponential smoothing keeps movement gradual and jitter-free.
+_cam_target = np.array([0.0, 300.0, 50.0], dtype=float)
+_CAMERA_SMOOTH = 0.06   # fraction to close per frame — lower = smoother
+
+# Camera basis vectors (recomputed each frame from _cam_target)
+_cf = np.array([0.0, 0.0, 0.0], dtype=float)
+_cr = np.array([0.0, 0.0, 0.0], dtype=float)
+_cu = np.array([0.0, 0.0, 0.0], dtype=float)
+
+
+def _update_camera(plane_pos):
+    """Smoothly pivot camera to keep the plane in view."""
+    # Move look-at point toward the plane
+    _cam_target[:] += (plane_pos - _cam_target) * _CAMERA_SMOOTH
+
+    fwd = _cam_target - CAMERA_POS
+    fwd_len = np.linalg.norm(fwd)
+    if fwd_len < 0.1:
+        return
+    fwd /= fwd_len
+
+    # Build orthonormal basis; fall back if looking straight up/down
+    world_up = np.array([0.0, 0.0, 1.0])
+    right = np.cross(fwd, world_up)
+    r_len = np.linalg.norm(right)
+    if r_len < 0.01:
+        world_up = np.array([0.0, 1.0, 0.0])
+        right = np.cross(fwd, world_up)
+        r_len = np.linalg.norm(right)
+    right /= r_len
+
+    _cf[:] = fwd
+    _cr[:] = right
+    _cu[:] = np.cross(right, fwd)
+
+
+# Initialise camera vectors pointing at the default scene centre
+_update_camera(np.array([0.0, 300.0, 50.0]))
 
 
 # ============================================================
@@ -683,6 +716,9 @@ while True:
     yaw   = _s.yaw   if _s else None
     roll  = _s.roll  if _s else 0.0
     pitch = _s.pitch if _s else 0.0
+
+    # Smooth-pivot camera to keep the plane in view
+    _update_camera(pos)
 
     # --------------------------------------------------------
     # BACKGROUND
