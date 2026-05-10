@@ -318,7 +318,7 @@ class LandingEnv(gym.Env):
     def __init__(self, pilotage_model):
         super().__init__()
         self._pilot = pilotage_model
-        self._phys  = AircraftPhysics()
+        self._phys  = SimplePhysics() if SIMPLE_PHYSICS else AircraftPhysics()
 
         obs_high = np.array(
             [400, 800, 250, 20, math.pi * 2, math.pi / 2, math.pi],
@@ -370,11 +370,11 @@ class LandingEnv(gym.Env):
             s.pitch, s.roll, yaw,
             s.pitch_rate, s.roll_rate, s.yaw_rate,
             s.throttle_pos, s.flap_pos,
-            cmd[0],      # target speed
-            s.pos[2],    # target alt = hold current (descent handled via vz)
-            cmd[1],      # target vz
-            0.0,         # target yaw = runway heading
-            cmd[2],      # target roll
+            cmd[0],   # target speed
+            0.0,      # target alt = ground (pilot descends toward 0)
+            cmd[1],   # target vz  (negative = descend)
+            0.0,      # target yaw = runway heading
+            cmd[2],   # target roll
         ], dtype=np.float32)
 
     # ---- gym interface ----
