@@ -132,7 +132,7 @@ class PilotageEnv(gym.Env):
         speed_err = abs(s.airspeed - cmd_speed) / 3.0   # /5 let policy hold start speed and still converge
         # /150 prevents saturation: 80m climb starts at 0.47 not -1.0,
         # so the policy has gradient throughout the manoeuvre.
-        alt_err   = abs(s.pos[2]   - cmd_alt)   / 150.0
+        alt_err   = abs(s.pos[2]   - cmd_alt)   / 80.0    # was /150 — gradient too weak for climb
         yaw_err   = abs(math.atan2(math.sin(s.yaw - cmd_yaw),
                                    math.cos(s.yaw - cmd_yaw))) / math.pi * 0.5
         roll_err  = abs(s.roll - cmd_roll) / math.pi
@@ -242,9 +242,8 @@ class PilotageEnv(gym.Env):
         reward = self._reward()
 
         # Smoothness penalty — discourages rapid action changes (limit-cycle hunting).
-        # Each channel weighted by how much it affects the rewarded goal.
         delta = actuators - self._prev_action
-        reward -= (abs(delta[0]) * 0.5    # throttle  → speed
+        reward -= (abs(delta[0]) * 0.4    # throttle  → speed
                  + abs(delta[1]) * 0.3    # elevator  → altitude
                  + abs(delta[2]) * 0.3)   # aileron   → heading
         self._prev_action = actuators.copy()
