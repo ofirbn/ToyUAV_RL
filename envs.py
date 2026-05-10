@@ -262,6 +262,13 @@ class PilotageEnv(gym.Env):
                  + abs(delta[2]) * 0.3)   # aileron   → heading
         self._prev_action = actuators.copy()
 
+        # Sustained aileron penalty for non-turn modes.
+        # The delta penalty above only penalises *changes*; a constant aileron
+        # deflection costs nothing and lets the plane spin indefinitely.
+        # In turn mode aileron is the control — don't penalise it there.
+        if self._scenario != 'turn':
+            reward -= abs(float(actuators[2])) * 0.25
+
         done = False
         if not SIMPLE_PHYSICS:
             # attitude limits only matter with real aerodynamics
