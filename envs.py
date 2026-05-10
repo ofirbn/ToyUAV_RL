@@ -145,7 +145,7 @@ class PilotageEnv(gym.Env):
         # so penalising roll would conflict with the turning objective.
         sc = self._scenario
         if sc in ('level', 'speed'):
-            r = 1.0 - speed_err
+            r = 1.0 - speed_err - yaw_err   # yaw keeps plane from spinning while learning speed
         elif sc in ('climb', 'descent'):
             r = 1.0 - alt_err - yaw_err   # hold heading while changing altitude
         elif sc == 'turn':
@@ -255,22 +255,24 @@ class PilotageEnv(gym.Env):
 
         reward = self._reward()
 
-        # Smoothness penalty — discourages rapid action changes (limit-cycle hunting).
+        # Smoothness: penalise rapid changes only — keeps control smooth.
+        # Weights deliberately small so early exploration still earns positive reward.
         delta = actuators - self._prev_action
-        reward -= (abs(delta[0]) * 1.0    # throttle — raised from 0.4; delta=0.5/step costs 200pts
-                 + abs(delta[1]) * 0.3    # elevator
-                 + abs(delta[2]) * 0.3    # aileron
-                 + abs(delta[3]) * 0.3)   # rudder
+        reward -= (abs(delta[0]) * 0.20   # throttle
+                 + abs(delta[1]) * 0.10   # elevator
+                 + abs(delta[2]) * 0.10   # aileron
+                 + abs(delta[3]) * 0.10)  # rudder
         self._prev_action = actuators.copy()
 
-        # Sustained deflection penalties — constant non-zero inputs that the
-        # delta penalty misses (delta=0 once settled at any fixed value).
+        # Sustained aileron/rudder penalty in non-turn modes.
+        # Spinning prevention — weight moderate so learning still gets positive signal.
+        # Elevator sustained penalty REMOVED: SimplePhysics naturally returns
+        # vz→0 when elevator=0, so the physics enforce it without a penalty.
+        # The previous 0.8 weights collectively overwhelmed the reward (r=-238).
         sc = self._scenario
         if sc != 'turn':
-            reward -= (abs(float(actuators[2])) * 0.8    # aileron  (spinning)
-                     + abs(float(actuators[3])) * 0.8)   # rudder   (spinning)
-        if sc not in ('climb', 'descent'):
-            reward -= abs(float(actuators[1])) * 0.8     # elevator (climbing/diving when not needed)
+            reward -= (abs(float(actuators[2])) * 0.4    # aileron
+                     + abs(float(actuators[3])) * 0.4)   # rudder
 
         done = False
         if not SIMPLE_PHYSICS:
