@@ -768,6 +768,16 @@ while True:
             _disp_obs, _ = _disp_env.reset()
             _disp_episodes += 1
 
+    # Keep display env locked to the mode currently being trained
+    # so the visual cues (arrows, diamonds) always match training.
+    with _stats_lock:
+        _disp_train_mode = _train_stats.get('mode', '')
+    if (_disp_env is _pilot_disp_env and _disp_train_mode and
+            _pilot_disp_env._active_modes != [_disp_train_mode]):
+        _pilot_disp_env._active_modes = [_disp_train_mode]
+        _disp_obs, _ = _disp_env.reset()
+        _disp_state  = 'fly'
+
     pos   = _disp_env.pos.astype(float)
     vel   = _disp_env.vel.astype(float)
     _s    = _disp_env._state if hasattr(_disp_env, '_state') else None
