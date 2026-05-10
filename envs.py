@@ -210,7 +210,7 @@ class PilotageEnv(gym.Env):
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
                 vel=np.array([math.sin(yaw)*spd0, -math.cos(yaw)*spd0, 0.0]),
-                pitch=0.10, roll=0.0, yaw=yaw, throttle_pos=0.30,
+                pitch=0.0, roll=0.0, yaw=yaw, throttle_pos=spd0 / 15.0,
             )
             self._cmd = np.array([spd1, alt, 0.0, yaw, 0.0])
 
