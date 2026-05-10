@@ -96,12 +96,13 @@ class PilotageEnv(gym.Env):
             high = np.array([1,  1,  1,  1, 1], dtype=np.float32),
         )
 
-        self._state    = None
-        self._cmd      = np.zeros(5)   # [speed, alt, vz, yaw, roll]
-        self._scenario = ''            # current mode name (for display)
-        self.steps     = 0
-        self.last_grade = ''
-        self.last_score = 0.0
+        self._state      = None
+        self._cmd        = np.zeros(5)   # [speed, alt, vz, yaw, roll]
+        self._scenario   = ''
+        self._prev_action = np.zeros(5)  # for smoothness penalty
+        self.steps       = 0
+        self.last_grade  = ''
+        self.last_score  = 0.0
         self.reset()
 
     # ----------------------------------------------------------
@@ -225,9 +226,10 @@ class PilotageEnv(gym.Env):
             cmd_spd = float(np.random.uniform(9, 12))
             self._cmd = np.array([cmd_spd, alt, 0.0, yaw, 0.0])
 
-        self._scenario = mode
+        self._scenario    = mode
         PilotageEnv._last_scenario = mode
-        self.steps = 0
+        self._prev_action = np.zeros(5)
+        self.steps        = 0
         return self._obs(), {}
 
     def step(self, action):
@@ -238,6 +240,14 @@ class PilotageEnv(gym.Env):
         s = self._state
 
         reward = self._reward()
+
+        # Smoothness penalty — discourages rapid action changes (limit-cycle hunting).
+        # Each channel weighted by how much it affects the rewarded goal.
+        delta = actuators - self._prev_action
+        reward -= (abs(delta[0]) * 0.5    # throttle  → speed
+                 + abs(delta[1]) * 0.3    # elevator  → altitude
+                 + abs(delta[2]) * 0.3)   # aileron   → heading
+        self._prev_action = actuators.copy()
 
         done = False
         if not SIMPLE_PHYSICS:
