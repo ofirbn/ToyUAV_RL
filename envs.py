@@ -128,7 +128,7 @@ class PilotageEnv(gym.Env):
         s = self._state
         cmd_speed, cmd_alt, cmd_vz, cmd_yaw, cmd_roll = self._cmd
 
-        speed_err = abs(s.airspeed - cmd_speed) / 5.0
+        speed_err = abs(s.airspeed - cmd_speed) / 3.0   # /5 let policy hold start speed and still converge
         # /150 prevents saturation: 80m climb starts at 0.47 not -1.0,
         # so the policy has gradient throughout the manoeuvre.
         alt_err   = abs(s.pos[2]   - cmd_alt)   / 150.0
