@@ -169,13 +169,15 @@ class AircraftPhysics:
         tz =  sp      * F_thrust
 
         cr, sr = math.cos(state.roll), math.sin(state.roll)
-        # lx sign: positive roll → yaw increases (left turn from -y heading) →
-        # centripetal force must be in +x direction → lx must be positive.
-        # Old sign (-sr) was wrong: lift fought the turn, forcing the keel to
-        # do all the work and braking horizontal speed.
-        lx =  sr * cp * F_lift
+        # Lift is in the wind frame (perpendicular to velocity).
+        # Rolling tilts it laterally; pitch does NOT reduce its magnitude —
+        # that is already captured by the AoA→CL calculation.
+        # The old cp (cos pitch) factor halved lz at 60° pitch, starving the
+        # plane of lift exactly when it was climbing or in unusual attitudes.
+        # cp belongs only on thrust (body-frame force), not on lift.
+        lx =  sr * F_lift
         ly =  0.0
-        lz =  cr * cp * F_lift
+        lz =  cr * F_lift
 
         vel_norm = state.vel / (np.linalg.norm(state.vel) + 1e-6)
         dx, dy, dz = -F_drag * vel_norm
