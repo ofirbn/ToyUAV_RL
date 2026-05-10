@@ -156,9 +156,11 @@ class PilotageEnv(gym.Env):
             r = 1.0 - speed_err - alt_err - yaw_err - roll_err
 
         r = float(np.clip(r, -1.0, 1.0))
-
-        # throttle below cruise minimum → severe penalty
-        r -= max(0.0, 0.30 - s.throttle_pos) * 4.0
+        # Throttle minimum penalty REMOVED.
+        # It created a local optimum at throttle=0.30 (parks there to avoid
+        # both the delta penalty and the min penalty, giving speed=4.5 m/s
+        # while target is 9-13 m/s → speed_err clips to 1.0 → r≈-0.08/step).
+        # speed_err already provides the gradient to push throttle toward target.
         return r
 
     # ----------------------------------------------------------
