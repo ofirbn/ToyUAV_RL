@@ -54,11 +54,19 @@ _policy_ready   = threading.Event()
 
 _stats_lock  = threading.Lock()
 _train_stats = {
-    'stage':     'pilotage',    # 'pilotage' | 'landing' | 'done'
-    'scenario':  '',            # current pilotage scenario name
-    'updates':   0,
-    'timesteps': 0,
-    'converged': False,
+    'stage':       'pilotage',
+    'scenario':    '',          # current mode name (for display compat)
+    'updates':     0,
+    'timesteps':   0,
+    'converged':   False,
+    # per-mode progress
+    'mode':        '',          # mode currently training
+    'mode_idx':    0,           # 1-based index
+    'mode_total':  6,
+    'mode_ts':     0,           # timesteps used on this mode
+    'mode_reward': 0.0,         # latest mean reward for this mode
+    'mode_status': '',          # 'training' | 'converged' | 'timeout'
+    'mode_log':    [],          # list of (mode, status, reward, ts) — completed modes
 }
 
 _stop = threading.Event()
@@ -118,63 +126,111 @@ def _training_worker(mode: str):
 
     os.makedirs(MODELS_DIR, exist_ok=True)
 
-    # ---- Stage 1: Pilotage (goal-conditioned, no curriculum) ----
+    # ---- Stage 1: Pilotage — train one mode at a time to completion ----
+
+    TRAIN_MODES    = ['recovery', 'level', 'climb', 'descent', 'speed', 'turn']
+    MAX_PER_MODE   = 600_000   # timestep budget per mode
+    CONV_THRESHOLD = PilotageEnv.CONVERGENCE_REWARD
+    CONV_WINDOW    = PilotageEnv.CONVERGENCE_WINDOW
+
+    with _stats_lock:
+        _train_stats['stage']      = 'pilotage'
+        _train_stats['mode_total'] = len(TRAIN_MODES)
 
     if mode == "scratch":
-        pilotage_model = _make_ppo(PilotageEnv)
-        print("[TRAIN] Pilotage: training from scratch (goal-conditioned)")
+        # Build fresh model on the first mode's env to get the right obs/action dims
+        pilotage_model = _make_ppo(
+            PilotageEnv,
+            env_kwargs={'active_scenarios': [TRAIN_MODES[0]]}
+        )
+        print("[TRAIN] Pilotage: training from scratch — mode by mode")
     else:
         pilotage_model = PPO.load(
             PILOTAGE_PATH,
-            env=make_vec_env(PilotageEnv, n_envs=N_ENVS)
+            env=make_vec_env(PilotageEnv, n_envs=N_ENVS,
+                             env_kwargs={'active_scenarios': [TRAIN_MODES[0]]})
         )
         print("[TRAIN] Pilotage: loaded from", PILOTAGE_PATH)
 
+    # Expose policy to display immediately
     with _policy_lock:
         _display_policy = _clone_policy(pilotage_model.policy)
         _display_policy.set_training_mode(False)
     _policy_ready.set()
 
-    with _stats_lock:
-        _train_stats['stage'] = 'pilotage'
+    total_ts = 0
 
     if mode != "load_only":
-        total_ts    = 0
-        conv_window = deque(maxlen=PilotageEnv.CONVERGENCE_WINDOW)
-        print(f"[PILOTAGE] Training until mean reward ≥ "
-              f"{PilotageEnv.CONVERGENCE_REWARD} over "
-              f"{PilotageEnv.CONVERGENCE_WINDOW} updates ...")
-
-        while not _stop.is_set() and total_ts < PilotageEnv.MAX_TIMESTEPS:
-            pilotage_model.learn(
-                total_timesteps     = STEPS_PER_UPDATE,
-                reset_num_timesteps = False,
-            )
-            total_ts += STEPS_PER_UPDATE
-
-            if pilotage_model.ep_info_buffer:
-                mean_r = float(np.mean(
-                    [ep['r'] for ep in pilotage_model.ep_info_buffer]
-                ))
-                conv_window.append(mean_r)
-
-            _sync_display_policy(pilotage_model)
-            with _stats_lock:
-                _train_stats['updates']   += 1
-                _train_stats['timesteps'] += STEPS_PER_UPDATE
-                _train_stats['scenario']   = PilotageEnv._last_scenario
-
-            if (len(conv_window) == PilotageEnv.CONVERGENCE_WINDOW and
-                    np.mean(conv_window) >= PilotageEnv.CONVERGENCE_REWARD):
-                print(f"[PILOTAGE] Converged — mean reward "
-                      f"{np.mean(conv_window):.1f} → advancing to landing")
+        for mode_idx, train_mode in enumerate(TRAIN_MODES):
+            if _stop.is_set():
                 break
 
-        if total_ts >= PilotageEnv.MAX_TIMESTEPS:
-            print("[PILOTAGE] Timestep cap — advancing with best pilot so far")
+            print(f"\n[PILOTAGE] ── Mode {mode_idx+1}/{len(TRAIN_MODES)}: "
+                  f"'{train_mode}' (budget {MAX_PER_MODE//1000}k steps) ──")
 
-        pilotage_model.save(PILOTAGE_PATH)
-        print("[TRAIN] Pilotage model saved →", PILOTAGE_PATH)
+            mode_env = make_vec_env(
+                PilotageEnv, n_envs=N_ENVS,
+                env_kwargs={'active_scenarios': [train_mode]}
+            )
+            pilotage_model.set_env(mode_env)
+
+            conv_window = deque(maxlen=CONV_WINDOW)
+            mode_ts = 0
+
+            with _stats_lock:
+                _train_stats['mode']       = train_mode
+                _train_stats['mode_idx']   = mode_idx + 1
+                _train_stats['mode_ts']    = 0
+                _train_stats['mode_reward'] = 0.0
+                _train_stats['mode_status'] = 'training'
+                _train_stats['scenario']   = train_mode
+
+            while not _stop.is_set() and mode_ts < MAX_PER_MODE:
+                pilotage_model.learn(
+                    total_timesteps     = STEPS_PER_UPDATE,
+                    reset_num_timesteps = False,
+                )
+                mode_ts  += STEPS_PER_UPDATE
+                total_ts += STEPS_PER_UPDATE
+
+                if pilotage_model.ep_info_buffer:
+                    mean_r = float(np.mean(
+                        [ep['r'] for ep in pilotage_model.ep_info_buffer]
+                    ))
+                    conv_window.append(mean_r)
+
+                _sync_display_policy(pilotage_model)
+                with _stats_lock:
+                    _train_stats['updates']    += 1
+                    _train_stats['timesteps']  += STEPS_PER_UPDATE
+                    _train_stats['mode_ts']     = mode_ts
+                    if conv_window:
+                        _train_stats['mode_reward'] = float(np.mean(conv_window))
+
+                if (len(conv_window) == CONV_WINDOW and
+                        float(np.mean(conv_window)) >= CONV_THRESHOLD):
+                    final_r = float(np.mean(conv_window))
+                    print(f"[PILOTAGE] '{train_mode}' CONVERGED  "
+                          f"reward={final_r:.1f}  steps={mode_ts:,}")
+                    status = 'converged'
+                    break
+
+            else:
+                final_r = float(np.mean(conv_window)) if conv_window else 0.0
+                print(f"[PILOTAGE] '{train_mode}' TIMEOUT     "
+                      f"reward={final_r:.1f}  steps={mode_ts:,}")
+                status = 'timeout'
+
+            with _stats_lock:
+                _train_stats['mode_status'] = status
+                _train_stats['mode_log'].append(
+                    (train_mode, status, final_r, mode_ts)
+                )
+
+            pilotage_model.save(f"{MODELS_DIR}/pilotage_{train_mode}")
+
+    pilotage_model.save(PILOTAGE_PATH)
+    print("[TRAIN] Pilotage model saved →", PILOTAGE_PATH)
 
     # ---- Stage 2: Landing ----
 
@@ -767,11 +823,18 @@ while True:
     # --------------------------------------------------------
 
     with _stats_lock:
-        stage     = _train_stats['stage']
-        scenario  = _train_stats['scenario']
-        updates   = _train_stats['updates']
-        timesteps = _train_stats['timesteps']
-        converged = _train_stats['converged']
+        stage        = _train_stats['stage']
+        scenario     = _train_stats['scenario']
+        updates      = _train_stats['updates']
+        timesteps    = _train_stats['timesteps']
+        converged    = _train_stats['converged']
+        cur_mode     = _train_stats['mode']
+        mode_idx     = _train_stats['mode_idx']
+        mode_total   = _train_stats['mode_total']
+        mode_ts      = _train_stats['mode_ts']
+        mode_reward  = _train_stats['mode_reward']
+        mode_status  = _train_stats['mode_status']
+        mode_log     = list(_train_stats['mode_log'])
 
     grade     = _disp_env.last_grade
     grade_col = _GRADE_COLOR.get(grade, DIM)
@@ -792,26 +855,34 @@ while True:
     vert_spd     = float(vel[2])
     cmd          = _disp_env._cmd if hasattr(_disp_env, '_cmd') else np.zeros(5)
 
+    STATUS_COL = {'converged': (80,255,120), 'timeout': (255,140,40), 'training': (255,220,80)}
+
     if is_pilotage:
-        tgt_spd = float(cmd[0]); tgt_alt = float(cmd[1]); tgt_vz = float(cmd[2])
+        tgt_spd = float(cmd[0]); tgt_alt = float(cmd[1])
+        mode_hdr = f"{cur_mode.upper()} ({mode_idx}/{mode_total})"
+        st_col   = STATUS_COL.get(mode_status, WHITE)
         hud = [
             (f"RL  {stage_label}",                          (100,200,255)),
-            (f"MODE:      {sc_name}",                       (180,180,255)),
+            (f"MODE:      {mode_hdr}",                      (180,180,255)),
+            (f"STATUS:    {mode_status.upper()}",            st_col),
+            (f"REWARD:    {mode_reward:+.3f}",               st_col),
+            (f"MODE STEPS:{mode_ts:>10,}",                  WHITE),
             ("",                                             WHITE),
             (f"AIRSPEED:  {np.linalg.norm(vel):6.2f} m/s",  WHITE),
             (f"HORIZ SPD: {horiz_spd:6.2f} m/s",            (200,230,255)),
             (f"VERT SPD:  {vert_spd:+6.2f} m/s",            (255,180,100) if vert_spd < -0.5 else WHITE),
-            (f"TGT SPEED: {tgt_spd:6.2f} m/s",              (180,255,180)),
-            (f"TGT ALT:   {tgt_alt:6.1f} m  vz={tgt_vz:+.1f}", (180,255,180)),
+            (f"TGT SPEED: {tgt_spd:6.2f}  ALT:{tgt_alt:.0f}m", (180,255,180)),
             (f"THROTTLE:  {throttle_pct:5d} %",              (255,220,80)),
             (f"ALTITUDE:  {pos[2]:6.1f} m",                  WHITE),
-            (f"PITCH:     {pitch_deg:+6.1f}°",               WHITE),
-            (f"BANK:      {roll_deg:+6.1f}°",                WHITE),
             ("",                                             WHITE),
-            (f"EPISODES:  {_disp_episodes}",                 WHITE),
-            (f"UPDATES:   {updates}",                        WHITE),
-            (f"TIMESTEPS: {timesteps:,}",                    WHITE),
         ]
+        # append completed-mode log (last 4)
+        for (m, s, r, ts) in mode_log[-4:]:
+            col = STATUS_COL.get(s, WHITE)
+            hud.append((f"  {m:<9} {s[:4].upper()} r={r:+.2f}", col))
+        hud.append(("",                                      WHITE))
+        hud.append((f"UPDATES:   {updates}",                 WHITE))
+        hud.append((f"TIMESTEPS: {timesteps:,}",             WHITE))
     else:
         hud = [
             (f"RL  {stage_label}",                   (100,200,255) if not converged else (100,255,100)),

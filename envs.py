@@ -71,9 +71,13 @@ class PilotageEnv(gym.Env):
     _MODES  = ['level', 'climb', 'descent', 'turn', 'speed', 'recovery']
     _PROBS  = [0.30,    0.15,    0.15,      0.15,   0.10,    0.15]
 
-    def __init__(self, active_scenarios=None):  # arg kept for API compat
+    def __init__(self, active_scenarios=None):
         super().__init__()
         self._phys = SimplePhysics() if SIMPLE_PHYSICS else AircraftPhysics()
+        # active_scenarios restricts which modes are sampled each episode.
+        # Pass ['level'] to train only level-flight, etc.
+        self._active_modes = (list(active_scenarios)
+                              if active_scenarios else self._MODES)
 
         # obs: 10 state + 5 goal = 15-D
         obs_high = np.array([
@@ -151,7 +155,7 @@ class PilotageEnv(gym.Env):
 
         alt = float(np.random.uniform(80, 400))
         yaw = float(np.random.uniform(-math.pi, math.pi))
-        mode = str(np.random.choice(self._MODES, p=self._PROBS))
+        mode = str(np.random.choice(self._active_modes))
 
         if mode == 'level':
             target_spd = float(np.random.uniform(9, 13))
