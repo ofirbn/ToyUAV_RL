@@ -911,6 +911,7 @@ while True:
                                                                   _col('roll', abs(roll-tgt_roll),    0.1)),
             ("─────────────────────────────────",                 (80,80,100)),
             (f"VSPD: {vert_spd:+5.2f} m/s   THR: {throttle_pct:3d}%", (100,100,100)),
+            (f"PITCH:{pitch_deg:+5.1f}°",                          (100,100,100)),
             ("",                                                  WHITE),
         ]
         # append completed-mode log (last 4)
