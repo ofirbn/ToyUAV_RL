@@ -228,9 +228,10 @@ class SimplePhysics:
     MAX_SPEED    = 15.0   # m/s forward
     MAX_VZ       =  5.0   # m/s climb/descent
     MAX_YAW_RATE =  1.0   # rad/s at full aileron
-    SPD_LAG      =  2.0   # forward speed  time-constant (1/s)
-    VZ_LAG       =  3.0   # climb rate     time-constant (1/s)
-    YR_LAG       =  3.0   # yaw rate       time-constant (1/s)
+    SPD_LAG      =  1.0   # forward speed  time-constant (1/s) — was 2.0
+    VZ_LAG       =  1.5   # climb rate     time-constant (1/s) — was 3.0
+    YR_LAG       =  2.0   # yaw rate       time-constant (1/s) — was 3.0
+    PITCH_SMOOTH =  4.0   # cosmetic pitch smoothing  (1/s)
 
     def step(self, state: AircraftState, actuators, dt: float = 0.1) -> AircraftState:
         throttle = float(np.clip(actuators[0],  0.0, 1.0))
@@ -252,12 +253,15 @@ class SimplePhysics:
         state.vel[1] = -math.cos(state.yaw) * new_spd
         state.vel[2] =  new_vz
 
-        # Cosmetic pitch / roll so the renderer looks right
-        state.pitch = math.atan2(new_vz, max(new_spd, 0.1)) * 0.6
-        state.roll  = new_yr / max(self.MAX_YAW_RATE, 0.01) * 0.4
+        # Cosmetic attitude — all smoothed so bang-bang inputs don't flicker.
+        target_pitch = math.atan2(new_vz, max(new_spd, 0.1)) * 0.6
+        target_roll  = new_yr / max(self.MAX_YAW_RATE, 0.01) * 0.4
+        k_cos        = min(1.0, self.PITCH_SMOOTH * dt)
+        state.pitch += (target_pitch - state.pitch) * k_cos
+        state.roll  += (target_roll  - state.roll)  * k_cos
 
-        # Keep throttle_pos in sync so the reward's throttle penalty works
-        state.throttle_pos += (throttle - state.throttle_pos) * 4.0 * dt
+        # throttle_pos: use same slow lag as speed so it doesn't flicker
+        state.throttle_pos += (throttle - state.throttle_pos) * self.SPD_LAG * dt
 
         state.pos = state.pos + state.vel * dt
         return state
