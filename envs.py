@@ -245,18 +245,24 @@ class PilotageEnv(gym.Env):
         s  = self._state
         sc = self._scenario
 
+        def _yaw_pen(target_yaw=0.0):
+            return abs(math.atan2(math.sin(s.yaw - target_yaw),
+                                  math.cos(s.yaw - target_yaw))) / math.pi
+
         if sc == 'straight_level':
             speed_err = abs(s.airspeed - self._target['speed']) / 5.0
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 40.0
-            vz_pen    = abs(float(s.vel[2])) * 0.05  # mild: penalise descent/oscillation
+            vz_pen    = abs(float(s.vel[2])) * 0.05
             r  =  1.0 - speed_err - alt_err - vz_pen
             r -= abs(s.roll) / math.pi
+            r -= _yaw_pen(self._target['yaw']) * 0.5   # hold heading
             r  = float(np.clip(r, -1.0, 1.0))
 
         elif sc == 'rate_climb':
             rate_err = abs(float(s.vel[2]) - self._target['rate']) / 4.0
             r  = 1.0 - rate_err
             r -= abs(s.roll) / math.pi
+            r -= _yaw_pen() * 0.3
             r  = float(np.clip(r, -1.0, 1.0))
             if s.pos[2] >= self._target['alt'] - 5:
                 r += 10.0   # success
@@ -265,6 +271,7 @@ class PilotageEnv(gym.Env):
             rate_err = abs(-float(s.vel[2]) - self._target['rate']) / 4.0
             r  = 1.0 - rate_err
             r -= abs(s.roll) / math.pi
+            r -= _yaw_pen() * 0.3
             r  = float(np.clip(r, -1.0, 1.0))
             if s.pos[2] <= self._target['alt'] + 5:
                 r += 10.0
@@ -285,6 +292,7 @@ class PilotageEnv(gym.Env):
             alt_err   = abs(s.pos[2]   - self._target['alt'])   / 50.0
             r  = 1.0 - speed_err - alt_err
             r -= abs(s.roll) / math.pi
+            r -= _yaw_pen() * 0.3
             r  = float(np.clip(r, -1.0, 1.0))
             if speed_err * 6.0 < 0.5:
                 r += 10.0
@@ -342,16 +350,16 @@ class PilotageEnv(gym.Env):
 
         reward = self._reward()
 
-        # ---- universal safety termination ----
+        # ---- episode termination (no explicit out-of-bounds penalty) ----
         done = False
         if abs(s.pitch) > math.radians(75):
             reward -= 20.0; done = True
         if abs(s.roll)  > math.radians(100):
             reward -= 20.0; done = True
         if s.pos[2] < 10.0:
-            reward -= 30.0; done = True
+            done = True
         if s.pos[2] > 700.0:
-            reward -= 10.0; done = True
+            done = True
 
         truncated = (not done) and (self.steps >= self.MAX_STEPS)
         return self._obs(), reward, done, truncated, {}
