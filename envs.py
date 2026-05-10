@@ -257,7 +257,7 @@ class PilotageEnv(gym.Env):
 
         # Smoothness penalty — discourages rapid action changes (limit-cycle hunting).
         delta = actuators - self._prev_action
-        reward -= (abs(delta[0]) * 0.4    # throttle
+        reward -= (abs(delta[0]) * 1.0    # throttle — raised from 0.4; delta=0.5/step costs 200pts
                  + abs(delta[1]) * 0.3    # elevator
                  + abs(delta[2]) * 0.3    # aileron
                  + abs(delta[3]) * 0.3)   # rudder
