@@ -128,7 +128,9 @@ def _training_worker(mode: str):
 
     # ---- Stage 1: Pilotage — train one mode at a time to completion ----
 
-    TRAIN_MODES    = ['recovery', 'level', 'climb', 'descent', 'speed', 'turn']
+    TRAIN_MODES    = ['level', 'climb', 'descent', 'speed', 'turn']
+    # 'recovery' excluded when SIMPLE_PHYSICS=True — roll/pitch are cosmetic
+    # in the arcade model so there is nothing physically to recover from.
     MAX_PER_MODE   = 600_000   # timestep budget per mode
     CONV_THRESHOLD = PilotageEnv.CONVERGENCE_REWARD
     CONV_WINDOW    = PilotageEnv.CONVERGENCE_WINDOW
