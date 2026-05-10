@@ -303,6 +303,12 @@ class PilotageEnv(gym.Env):
         else:
             r = 0.0
 
+        # Universal: throttle below 30% is severely punished on every step.
+        # A fixed-wing plane needs ~28-30% throttle for cruise — anything less
+        # means the engine is effectively off and the plane will stall/fall.
+        throttle_pen = max(0.0, 0.30 - s.throttle_pos) * 4.0
+        r -= throttle_pen
+
         return r
 
     # ----------------------------------------------------------
