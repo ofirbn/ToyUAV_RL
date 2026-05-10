@@ -445,15 +445,6 @@ def draw_plane(pos, vel, yaw=None, roll=0.0, pitch=0.0):
 
 small_font = pygame.font.SysFont("Consolas", 15)
 
-_SCENARIO_COLOR = {
-    'straight_level'  : (  0, 200, 255),   # cyan
-    'rate_climb'      : (  0, 255,  80),   # green
-    'rate_descent'    : (255, 140,   0),   # orange
-    'coordinated_turn': (255, 220,   0),   # yellow
-    'speed_change'    : (200,  80, 255),   # purple
-    'recovery'        : (255,  60,  60),   # red
-}
-
 
 def _lbl(pt, text, color):
     if pt:
@@ -536,34 +527,44 @@ def _wings_level_ref(pos, color):
     _lbl(rgt, "LEVEL REF", color)
 
 
+_MODE_COLOR = {
+    'level'   : (  0, 200, 255),
+    'climb'   : (  0, 255,  80),
+    'descent' : (255, 140,   0),
+    'turn'    : (255, 220,   0),
+    'speed'   : (200,  80, 255),
+    'recovery': (255,  60,  60),
+}
+
+
 def draw_scenario_cues(pos, disp_env):
     if not hasattr(disp_env, '_scenario') or not disp_env._scenario:
         return
-    sc  = disp_env._scenario
-    tgt = disp_env._target
-    col = _SCENARIO_COLOR.get(sc, (255,255,255))
+    mode = disp_env._scenario
+    cmd  = disp_env._cmd if hasattr(disp_env, '_cmd') else None
+    if cmd is None:
+        return
+    col = _MODE_COLOR.get(mode, (255, 255, 255))
 
-    if sc == 'straight_level':
-        _altitude_diamond(pos, tgt.get('alt', pos[2]), col)
+    # cmd = [speed, alt, vz, yaw, roll]
+    cmd_alt = float(cmd[1])
+    cmd_yaw = float(cmd[3])
+    cmd_spd = float(cmd[0])
 
-    elif sc == 'rate_climb':
-        _altitude_diamond(pos, tgt.get('alt', pos[2]), col)
-        _vertical_guide(pos,   tgt.get('alt', pos[2]), col)
-
-    elif sc == 'rate_descent':
-        _altitude_diamond(pos, tgt.get('alt', pos[2]), col)
-        _vertical_guide(pos,   tgt.get('alt', pos[2]), col)
-
-    elif sc == 'coordinated_turn':
-        _heading_arrow(pos, tgt.get('yaw', 0.0), col)
-        _altitude_diamond(pos, tgt.get('alt', pos[2]), col)
-
-    elif sc == 'speed_change':
+    if mode in ('level', 'speed'):
+        _altitude_diamond(pos, cmd_alt, col)
         yaw = disp_env._state.yaw if disp_env._state else 0.0
-        _speed_arrow(pos, yaw, tgt.get('speed', 10.0), col)
-        _altitude_diamond(pos, tgt.get('alt', pos[2]), col)
+        _speed_arrow(pos, yaw, cmd_spd, col)
 
-    elif sc == 'recovery':
+    elif mode in ('climb', 'descent'):
+        _altitude_diamond(pos, cmd_alt, col)
+        _vertical_guide(pos, cmd_alt, col)
+
+    elif mode == 'turn':
+        _heading_arrow(pos, cmd_yaw, col)
+        _altitude_diamond(pos, cmd_alt, col)
+
+    elif mode == 'recovery':
         _wings_level_ref(pos, col)
 
 
