@@ -118,14 +118,17 @@ class PilotageEnv(gym.Env):
         cmd_speed, cmd_alt, cmd_vz, cmd_yaw, cmd_roll = self._cmd
 
         speed_err = abs(s.airspeed - cmd_speed) / 5.0
-        alt_err   = abs(s.pos[2]   - cmd_alt)   / 40.0
-        vz_err    = abs(float(s.vel[2]) - cmd_vz) / 3.0
+        # /150 prevents saturation: 80m climb starts at 0.47 not -1.0,
+        # so the policy has gradient throughout the manoeuvre.
+        alt_err   = abs(s.pos[2]   - cmd_alt)   / 150.0
         yaw_err   = abs(math.atan2(math.sin(s.yaw - cmd_yaw),
                                    math.cos(s.yaw - cmd_yaw))) / math.pi * 0.5
         roll_err  = abs(s.roll - cmd_roll) / math.pi
-        vz_pen    = abs(float(s.vel[2])) * 0.03   # mild oscillation penalty
+        # vz_err and vz_pen removed: for climb/descent they contradict each other
+        # (cmd_vz stays fixed but vz should go to 0 once altitude is reached).
+        # alt_err already drives the elevator to maintain/reach altitude.
 
-        r = 1.0 - speed_err - alt_err - vz_err - yaw_err - roll_err - vz_pen
+        r = 1.0 - speed_err - alt_err - yaw_err - roll_err
         r = float(np.clip(r, -1.0, 1.0))
 
         # throttle below cruise minimum → severe penalty
