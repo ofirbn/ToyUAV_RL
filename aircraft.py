@@ -76,19 +76,19 @@ class AircraftPhysics:
 
     # ---- control surface authority (heavy trainer UAV — slow to respond) ----
     ELEV_GAIN  = 0.45    # reduced: slow pitch response
-    AIL_GAIN   = 0.70    # reduced: slower roll response, less aggressive bank
-    RUDD_GAIN  = 0.06    # very weak: trim sideslip only, bank drives the turn
+    AIL_GAIN   = 0.80    # max sustained bank = AIL_GAIN/ROLL_STAB = 0.80/1.0 ≈ 45.8°
+    RUDD_GAIN  = 0.04    # weak: trim sideslip only, bank drives the turn
 
-    # ---- very strong aerodynamic damping — rates decay quickly ----
+    # ---- aerodynamic damping ----
     PITCH_DAMP = 7.0
-    ROLL_DAMP  = 9.0
+    ROLL_DAMP  = 6.0     # roll TC = ROLL_DAMP/(ROLL_STAB·q_ratio) ≈ 2.7s at 15 m/s
     YAW_DAMP   = 5.0
 
     # ---- static stability: strong restoring tendency to wings-level/trim ----
     PITCH_STAB = 2.5     # strong pitch trim tendency
-    # ROLL_STAB reduced so bank is sustainable without constant aileron pressure.
-    # With AIL_GAIN=0.8: max sustainable bank = AIL_GAIN/ROLL_STAB ≈ 41°.
-    ROLL_STAB  = 1.2     # mild dihedral — allows coordinated loiter bank angles
+    # Mild dihedral: enough for passive roll stability, low enough that full
+    # aileron can sustain ~46° bank for coordinated loiter turns.
+    ROLL_STAB  = 1.0
 
     # ---- strong actuator lag: actual = 0.95*prev + 0.05*cmd per step ----
     ELEV_LAG     = 0.5   # 5% per 0.1s step → heavy lag

@@ -17,7 +17,9 @@ def compute_reward(mode: FlightMode,
                    crashed: bool = False,
                    landed: bool  = False,
                    prev_wp_dist: float = None,
-                   wp_arrived: bool = None) -> tuple:
+                   wp_arrived: bool = None,
+                   wp_capture_event: bool = False,
+                   wp_transitioning: bool = False) -> tuple:
     """
     Returns (total_reward: float, breakdown: dict).
 
@@ -38,7 +40,9 @@ def compute_reward(mode: FlightMode,
 
     elif mode == FlightMode.WAYPOINT:
         return _waypoint(state, target, prev_pos,
-                         prev_dist=prev_wp_dist, arrived_override=wp_arrived)
+                         prev_dist=prev_wp_dist, arrived_override=wp_arrived,
+                         wp_capture_event=wp_capture_event,
+                         wp_transitioning=wp_transitioning)
 
     elif mode == FlightMode.LOITER:
         return _loiter(state, target)
@@ -127,16 +131,19 @@ def _heading_hold(state, target: TargetInfo) -> tuple:
 # ------------------------------------------------------------------ WAYPOINT --
 
 def _waypoint(state, target: TargetInfo, prev_pos: np.ndarray,
-              prev_dist: float = None, arrived_override: bool = None) -> tuple:
+              prev_dist: float = None, arrived_override: bool = None,
+              wp_capture_event: bool = False, wp_transitioning: bool = False) -> tuple:
     tgt       = target.position
     curr_dist = float(np.linalg.norm(state.pos - tgt))
-    # Use leg-local prev_dist if provided; fall back to prev_pos for legacy callers.
     prev_d    = prev_dist if prev_dist is not None else float(np.linalg.norm(prev_pos - tgt))
     progress  = (prev_d - curr_dist) * 0.3
 
-    # arrived_override carries pre-mission-update arrival truth from the env;
-    # without it, fall back to current distance (correct for single-WP training).
-    arrived = arrived_override if arrived_override is not None else (curr_dist < 20.0)
+    # Clamp progress during leg handoff so the abrupt target switch isn't penalized.
+    if wp_transitioning:
+        progress = max(progress, 0.0)
+
+    # Arrival bonus fires on one-shot capture event; also clamp progress on arrival.
+    arrived = wp_capture_event or (arrived_override is True)
     if arrived:
         progress = max(progress, 0.0)
 
@@ -168,16 +175,33 @@ def _loiter(state, target: TargetInfo) -> tuple:
     dist   = math.sqrt(dx * dx + dy * dy) + 1e-6
     radius = max(target.radius, 1.0)
 
-    # Radius tracking (0.40 max)
-    rad_err = abs(dist - radius)
-    rad_r   = max(0.0, 1.0 - rad_err / radius) * 0.40
+    # Radial unit vector (outward from center) and CCW tangential unit vector
+    rx_hat = dx / dist
+    ry_hat = dy / dist
+    tx = -ry_hat   # tangential CCW
+    ty =  rx_hat
 
-    # Tangential alignment (0.25 max)
-    tx = -dy / dist
-    ty =  dx / dist
-    spd_h  = math.sqrt(state.vel[0] ** 2 + state.vel[1] ** 2) + 1e-6
-    tang   = (state.vel[0] * tx + state.vel[1] * ty) / spd_h
-    tang_r = max(0.0, tang) * 0.25
+    vx, vy = state.vel[0], state.vel[1]
+    spd_h  = math.sqrt(vx*vx + vy*vy) + 1e-6
+
+    # Velocity decomposition
+    v_tang = vx * tx + vy * ty           # positive = CCW orbit
+    v_rad  = vx * rx_hat + vy * ry_hat   # positive = moving outward
+    tang   = v_tang / spd_h              # tangential alignment ratio ∈ [-1, 1]
+
+    # Radius tracking — exponential decay from peak at desired radius (0.40 max).
+    # Sharper gradient near target than old linear: gradient at 0 is -0.40/rad_scale
+    # vs old -0.40/radius.  Keeps pulling even when far off.
+    rad_err   = abs(dist - radius)
+    rad_scale = max(radius * 0.25, 5.0)   # 25% of radius as 1-e-fold distance
+    rad_r     = math.exp(-rad_err / rad_scale) * 0.40
+
+    # Tangential alignment — strengthened to 0.30 (was 0.25)
+    tang_r = max(0.0, tang) * 0.30
+
+    # Radial velocity penalty — penalizes spiraling in or out (0.20 max).
+    # Encourages constant-radius orbit; abs() punishes both inward and outward drift.
+    rad_vel_p = min(abs(v_rad) * 0.06, 0.20)
 
     # Altitude hold (0.10 max)
     alt_err = abs(state.pos[2] - target.altitude)
@@ -209,22 +233,22 @@ def _loiter(state, target: TargetInfo) -> tuple:
     sideslip_p   = min(sideslip_err * 0.5, 0.20) if abs(state.yaw_rate) > 0.02 else 0.0
 
     # Uncoordinated-turn penalty: penalize turning faster than the bank justifies.
-    # Residual yaw_rate beyond the banked equilibrium = yaw-steering cheating.
     yr_excess = max(0.0, abs(state.yaw_rate) - abs(expected_yr))
     cheat_p   = min(yr_excess * 0.4, 0.20)
 
     bd = {
         "radius_reward":     round(rad_r,        4),
-        "tangential_flight": round(tang_r,       4),
-        "altitude_reward":   round(alt_r,        4),
-        "speed_reward":      round(speed_r,      4),
+        "tangential_flight": round(tang_r,        4),
+        "radial_vel_pen":    round(-rad_vel_p,    4),
+        "altitude_reward":   round(alt_r,         4),
+        "speed_reward":      round(speed_r,       4),
         "coord_turn":        round(coord_r,       4),
         "bank_tracking":     round(bank_track_r,  4),
         "sideslip_pen":      round(-sideslip_p,   4),
         "cheat_turn_pen":    round(-cheat_p,      4),
     }
     total = float(np.clip(
-        rad_r + tang_r + alt_r + speed_r + coord_r + bank_track_r
+        rad_r + tang_r - rad_vel_p + alt_r + speed_r + coord_r + bank_track_r
         - sideslip_p - cheat_p,
         -2.0, 2.0))
     return total, bd

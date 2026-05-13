@@ -356,10 +356,9 @@ class LiveCallback(BaseCallback):
                     self._ss.push_event("CRASH", (255, 60, 60))
                 elif landed:
                     self._ss.push_event("GOOD LANDING", (0, 255, 120))
-                elif info.get("mode") is not None:
-                    mode_name = str(info.get("mode", "")).replace("FlightMode.", "")
-                    if "WAYPOINT" in mode_name.upper():
-                        self._ss.push_event("WAYPOINT REACHED", (0, 200, 255))
+                elif (info.get("episode_success") and
+                      info.get("mode") == FlightMode.WAYPOINT):
+                    self._ss.push_event("WAYPOINT REACHED", (0, 200, 255))
 
                 # Curriculum stage advance notification
                 if curr is not None and info.get("curriculum_advanced"):
@@ -513,6 +512,25 @@ class LiveCallback(BaseCallback):
             "mastery_locked":        mastery_locked,
             "mastery_failing":       mastery_failing,
             "mastery_details":       mastery_details,
+            # Waypoint FSM telemetry — sourced from env0 info so renderer shows live state
+            "wp_state":             str(infos[0].get("wp_state",            "approaching")) if infos else "approaching",
+            "wp_capture_event":     bool(infos[0].get("wp_capture_event",   False))         if infos else False,
+            "wp_captured_count":    int(infos[0].get("wp_captured_count",   0))             if infos else 0,
+            "wp_transition_timer":  int(infos[0].get("wp_transition_timer", 0))             if infos else 0,
+            "wp_curr_dist":         float(infos[0].get("wp_curr_dist",      -1.0))          if infos else -1.0,
+            "wp_arrived":           bool(infos[0].get("wp_arrived",         False))         if infos else False,
+            "wp_mission_idx":       int(infos[0].get("wp_mission_idx",      -1))            if infos else -1,
+            "wp_leg_start_dist":    float(infos[0].get("wp_leg_start_dist", 0.0))           if infos else 0.0,
+            "wp_capture_eligible":  bool(infos[0].get("wp_capture_eligible", True))         if infos else True,
+            "wp_cooldown_active":   bool(infos[0].get("wp_cooldown_active",  False))        if infos else False,
+            "wp_capture_threshold": float(infos[0].get("wp_capture_threshold", 20.0))      if infos else 20.0,
+            # Loiter orbit quality diagnostics
+            "loiter_radius_current": float(infos[0].get("loiter_radius_current", 0.0)) if infos else 0.0,
+            "loiter_radius_desired": float(infos[0].get("loiter_radius_desired", 0.0)) if infos else 0.0,
+            "loiter_radial_error":   float(infos[0].get("loiter_radial_error",   0.0)) if infos else 0.0,
+            "loiter_radial_vel":     float(infos[0].get("loiter_radial_vel",     0.0)) if infos else 0.0,
+            "loiter_radius_std":     float(infos[0].get("loiter_radius_std",     0.0)) if infos else 0.0,
+            "loiter_tang_ratio":     float(infos[0].get("loiter_tang_ratio",     0.0)) if infos else 0.0,
             "ready": True,
         }
         patch.update(mode_rates)

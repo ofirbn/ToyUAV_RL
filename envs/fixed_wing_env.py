@@ -150,6 +150,10 @@ class FixedWingEnv(gym.Env):
         self._prev_wp_dist: float    = 0.0   # leg-local prev distance to active WP
         self._leg_start_dist: float  = 0.0   # distance to WP at leg start
         self._wp_leg_initialized     = False  # True once _prev_wp_dist is valid for current leg
+        self._wp_state: str          = 'approaching'  # approaching/transitioning
+        self._wp_capture_event: bool = False   # True for exactly 1 frame on capture
+        self._wp_transition_timer: int = 0     # cooldown frames after capture
+        self._wp_captured_count: int = 0       # captures this episode
         self._stall_steps      = 0       # consecutive stalled steps before crash
         self._autonomous_switching = True  # False when a curriculum phase lock is active
 
@@ -162,6 +166,9 @@ class FixedWingEnv(gym.Env):
 
         # Rolling telemetry buffer — last 60 steps (6 s) saved on crash
         self._telemetry_buf: collections.deque = collections.deque(maxlen=60)
+
+        # Loiter radius history — last 50 steps (5 s) for orbit quality diagnostics
+        self._loiter_radius_buf: collections.deque = collections.deque(maxlen=50)
 
         # obs: 27 base + 4 prev_action = 31-D
         self.observation_space = spaces.Box(
@@ -190,12 +197,17 @@ class FixedWingEnv(gym.Env):
         self._prev_wp_dist     = 0.0
         self._leg_start_dist   = 0.0
         self._wp_leg_initialized = False
+        self._wp_state            = 'approaching'
+        self._wp_capture_event    = False
+        self._wp_transition_timer = 0
+        self._wp_captured_count   = 0
         self._stall_steps      = 0
         self._ep_roll_rate_acc  = 0.0
         self._ep_pitch_rate_acc = 0.0
         self._ep_ctrl_osc_acc   = 0.0
         self._prev_surface      = np.zeros(3)
         self._telemetry_buf.clear()
+        self._loiter_radius_buf.clear()
 
         if self._training_mode:
             self._reset_training()
@@ -495,11 +507,32 @@ class FixedWingEnv(gym.Env):
             if done_mission:
                 self._mode = FlightMode.STABILIZE
 
-        # Waypoint proximity tracking — use pre-update distance so we credit
-        # arrival at the waypoint we were actually flying toward.
-        if wp_arrived_pre_update:
-            self._waypoint_reached = True
-            self._wp_arrival_steps += 1
+        # Waypoint state machine — fire capture event exactly once per approach.
+        # APPROACHING → (inside radius) → TRANSITIONING (15-step cooldown) → APPROACHING
+        self._wp_capture_event = False
+        if self._mode == FlightMode.WAYPOINT:
+            if self._wp_transition_timer > 0:
+                self._wp_transition_timer -= 1
+                if self._wp_transition_timer == 0:
+                    print(f"[WP_FSM] TRANSITIONING -> APPROACHING  step={self.steps}  cap_total={self._wp_captured_count}")
+                    self._wp_state = 'approaching'
+            if wp_switch_event:
+                new_idx = self._mission.current_index if self._mission else -1
+                print(f"[WP_FSM] wp_switch_event -> APPROACHING  step={self.steps}  new_wp_idx={new_idx}")
+                self._wp_state            = 'approaching'
+                self._wp_transition_timer = 0
+            if wp_arrived_pre_update and self._wp_state == 'approaching':
+                print(f"[WP_FSM] APPROACHING -> TRANSITIONING  step={self.steps}  "
+                      f"dist={dist_to_wp_pre_update:.1f}m  cap#{self._wp_captured_count + 1}")
+                self._wp_capture_event    = True
+                self._waypoint_reached    = True
+                self._wp_captured_count  += 1
+                self._wp_arrival_steps   += 1
+                self._wp_state            = 'transitioning'
+                self._wp_transition_timer = 15  # 1.5 s cooldown
+        else:
+            self._wp_state            = 'approaching'
+            self._wp_transition_timer = 0
 
         # Leg-local waypoint progress bookkeeping.
         # _prev_wp_dist is reset on any leg transition so that the first step of
@@ -557,16 +590,16 @@ class FixedWingEnv(gym.Env):
 
         # Base reward
         reward, breakdown = compute_reward(
-            mode         = self._mode,
-            state        = self._state,
-            target       = self._target,
-            prev_pos     = self._prev_pos,
-            crashed      = crashed,
-            landed       = landed,
-            prev_wp_dist = (self._prev_wp_dist if curr_wp_dist is not None else None),
-            # Pass pre-update arrival only on transition steps; otherwise let the
-            # reward function detect arrival from curr_dist < 20 (training mode).
-            wp_arrived   = (wp_arrived_pre_update if wp_switch_event else None),
+            mode             = self._mode,
+            state            = self._state,
+            target           = self._target,
+            prev_pos         = self._prev_pos,
+            crashed          = crashed,
+            landed           = landed,
+            prev_wp_dist     = (self._prev_wp_dist if curr_wp_dist is not None else None),
+            wp_arrived       = (wp_arrived_pre_update if wp_switch_event else None),
+            wp_capture_event = self._wp_capture_event,
+            wp_transitioning = (self._wp_state == 'transitioning'),
         )
 
         # Advance leg-local prev distance for next step.
@@ -707,7 +740,37 @@ class FixedWingEnv(gym.Env):
             'wp_leg_reset':         wp_leg_reset,
             'wp_leg_start_dist':    round(self._leg_start_dist, 1),
             'wp_mission_idx':       (self._mission.current_index if self._mission else -1),
+            'wp_state':             self._wp_state,
+            'wp_capture_event':     self._wp_capture_event,
+            'wp_transition_timer':  self._wp_transition_timer,
+            'wp_captured_count':    self._wp_captured_count,
+            'wp_capture_threshold': 20.0,
+            'wp_capture_eligible':  (self._wp_state == 'approaching'),
+            'wp_cooldown_active':   (self._wp_transition_timer > 0),
         }
+
+        # Loiter orbit quality diagnostics
+        if self._mode == FlightMode.LOITER and self._target is not None:
+            _cx = self._target.position[0]
+            _cy = self._target.position[1]
+            _dx = self._state.pos[0] - _cx
+            _dy = self._state.pos[1] - _cy
+            _r  = math.sqrt(_dx*_dx + _dy*_dy)
+            self._loiter_radius_buf.append(_r)
+            _ds  = max(_r, 1e-6)
+            _rx  = _dx / _ds;  _ry = _dy / _ds
+            _vx  = self._state.vel[0];  _vy = self._state.vel[1]
+            _vr  = _vx * _rx + _vy * _ry                        # radial vel (outward+)
+            _tx  = -_ry;  _ty = _rx
+            _sh  = math.sqrt(_vx*_vx + _vy*_vy) + 1e-6
+            _tg  = (_vx * _tx + _vy * _ty) / _sh                # tangential ratio
+            _std = float(np.std(self._loiter_radius_buf)) if len(self._loiter_radius_buf) >= 3 else 0.0
+            info['loiter_radius_current'] = round(_r, 1)
+            info['loiter_radius_desired'] = round(float(self._target.radius), 1)
+            info['loiter_radial_error']   = round(_r - float(self._target.radius), 2)
+            info['loiter_radial_vel']     = round(_vr, 3)
+            info['loiter_radius_std']     = round(_std, 2)
+            info['loiter_tang_ratio']     = round(_tg, 3)
 
         if done or truncated:
             success = self._episode_success(crashed, landed)
@@ -878,7 +941,7 @@ class FixedWingEnv(gym.Env):
                                       heading=yaw, altitude=pos[2])
 
         elif mode == FlightMode.LOITER:
-            radius = 60.0
+            radius = 80.0
             left   = yaw - math.pi / 2
             cx = pos[0] + math.sin(left) * radius
             cy = pos[1] - math.cos(left) * radius

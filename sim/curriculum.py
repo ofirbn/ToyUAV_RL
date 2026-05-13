@@ -230,7 +230,7 @@ STAGES: List[StageConfig] = [
                FlightMode.WAYPOINT, FlightMode.LOITER],
         difficulty=StageDifficulty(
             wp_dist_range=(100, 350),
-            loiter_rad_range=(30, 70),
+            loiter_rad_range=(60, 100),
         ),
         mastery_gate=MasteryGate(
             min_success_rate=0.75,
@@ -293,7 +293,7 @@ STAGES: List[StageConfig] = [
             alt_delta_range=(20, 150),
             hdg_delta_range=(0.3, 1.5),
             wp_dist_range=(100, 500),
-            loiter_rad_range=(25, 80),
+            loiter_rad_range=(50, 100),
             approach_dist_range=(200, 700),
             landing_dist_range=(60, 250),
         ),

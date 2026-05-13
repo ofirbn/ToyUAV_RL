@@ -161,6 +161,10 @@ class Renderer:
         # Last known aircraft position (updated every frame)
         self._last_pos = np.array([0., 50., 50.])
 
+        # Waypoint capture flash state — counts down after each capture event
+        self._wp_capture_flash_timer = 0
+        self._wp_capture_count       = 0
+
         # ── Renderer debug mode ──────────────────────────────────────────────
         # TAB to toggle; Q/E = roll, W/S = pitch, A/D = yaw
         self._debug_mode       = False
@@ -346,17 +350,22 @@ class Renderer:
             vs.blit(done_s, (VIEW_W//2 - done_s.get_width()//2, 8))
 
         # Waypoint distance + arrival overlay
-        wp_dist    = float(d.get("wp_curr_dist", -1.0))
-        wp_arrived = bool(d.get("wp_arrived", False))
-        wp_steps   = int(d.get("wp_arrival_steps", 0))
+        wp_dist        = float(d.get("wp_curr_dist", -1.0))
+        wp_state       = str(d.get("wp_state", "approaching"))
+        wp_capture_ev  = bool(d.get("wp_capture_event", False))
+        wp_cap_count   = int(d.get("wp_captured_count", 0))
         if mode == FlightMode.WAYPOINT and wp_dist >= 0:
-            dist_col = GREEN if wp_arrived else CYAN
+            dist_col = AMBER if wp_state == 'transitioning' else CYAN
             dist_s   = self._font_sm.render(f"WP {wp_dist:.0f}m", True, dist_col)
             vs.blit(dist_s, (6, 38))
-        if wp_arrived:
-            arr_col = GREEN
-            arr_s   = self._font_md.render(
-                f"WAYPOINT REACHED  [{wp_steps}]", True, arr_col)
+        # Flash "WAYPOINT REACHED" for ~3 s on capture; auto-dismiss afterward.
+        if wp_capture_ev or wp_cap_count > self._wp_capture_count:
+            self._wp_capture_flash_timer = 90
+            self._wp_capture_count       = wp_cap_count
+        if self._wp_capture_flash_timer > 0:
+            self._wp_capture_flash_timer -= 1
+            arr_s = self._font_md.render(
+                f"WAYPOINT REACHED  [#{self._wp_capture_count}]", True, GREEN)
             vs.blit(arr_s, (VIEW_W // 2 - arr_s.get_width() // 2, 30))
 
         # Event overlay (bottom of view)
@@ -1104,6 +1113,32 @@ class Renderer:
 
         ry += 4
 
+        # ── WAYPOINT telemetry ─────────────────────────────────────────────────
+        if mode == FlightMode.WAYPOINT:
+            header("WAYPOINT INFO", ry, MODE_COLORS.get(FlightMode.WAYPOINT, CYAN)); ry += 16
+            wp_st      = str(d.get("wp_state", "approaching")).upper()
+            wp_idx     = int(d.get("wp_mission_idx", -1))
+            wp_tmr     = int(d.get("wp_transition_timer", 0))
+            wp_cnt     = int(d.get("wp_captured_count", 0))
+            wp_dst     = float(d.get("wp_curr_dist", 0.0))
+            wp_strt    = float(d.get("wp_leg_start_dist", 0.0))
+            wp_thresh  = float(d.get("wp_capture_threshold", 20.0))
+            wp_elig    = bool(d.get("wp_capture_eligible", True))
+            wp_cool    = bool(d.get("wp_cooldown_active", False))
+            st_col     = AMBER if wp_st == 'TRANSITIONING' else CYAN
+            elig_col   = GREEN if wp_elig else AMBER
+            row("STATE",    wp_st,   ry, st_col);  ry += 14
+            row("WP IDX",   str(wp_idx) if wp_idx >= 0 else "N/A", ry, CYAN);  ry += 14
+            row("CAPTURED", str(wp_cnt), ry, GREEN if wp_cnt > 0 else DIM);    ry += 14
+            row("COOLDOWN", f"{wp_tmr}",     ry, AMBER if wp_cool else DIM);   ry += 14
+            row("ELIGIBLE", "YES" if wp_elig else "NO", ry, elig_col);         ry += 14
+            row("THRESHOLD",f"{wp_thresh:.0f} m", ry, DIM);                    ry += 14
+            row("LEG DIST", f"{wp_dst:.0f} m", ry);  ry += 14
+            if wp_strt > 0:
+                pct = max(0.0, 1.0 - wp_dst / wp_strt) * 100
+                row("LEG PROG", f"{pct:.0f}%", ry, CYAN);  ry += 14
+            ry += 2
+
         # ── LOITER coordination telemetry ─────────────────────────────────────
         if mode == FlightMode.LOITER:
             header("LOITER INFO", ry, MODE_COLORS.get(FlightMode.LOITER, CYAN)); ry += 16
@@ -1131,7 +1166,27 @@ class Renderer:
             row("REQ BANK",   f"{req_bank:4.1f}\xb0",       ry, DIM);        ry += 14
             row("LAT-G",      f"{lat_g:4.2f} g",            ry,
                 RED if lat_g > 2 else (AMBER if lat_g > 1 else WHITE));      ry += 14
-            row("COORD ERR",  f"{sideslip:+.3f}",           ry, sd_col);     ry += 16
+            row("COORD ERR",  f"{sideslip:+.3f}",           ry, sd_col);     ry += 14
+
+            # Orbit quality diagnostics
+            pygame.draw.line(scr, PANEL_BDR, (x+4, y+ry+1), (x+w-4, y+ry+1), 1)
+            ry += 6
+            orb_cur  = float(d.get("loiter_radius_current", 0.0))
+            orb_des  = float(d.get("loiter_radius_desired",  0.0))
+            orb_rerr = float(d.get("loiter_radial_error",    0.0))
+            orb_vrad = float(d.get("loiter_radial_vel",      0.0))
+            orb_std  = float(d.get("loiter_radius_std",      0.0))
+            orb_tang = float(d.get("loiter_tang_ratio",      0.0))
+            rerr_col = GREEN if abs(orb_rerr) < 10 else (AMBER if abs(orb_rerr) < 25 else RED)
+            vrad_col = GREEN if abs(orb_vrad) < 1.0 else (AMBER if abs(orb_vrad) < 3.0 else RED)
+            std_col  = GREEN if orb_std < 5 else (AMBER if orb_std < 15 else RED)
+            tang_col = GREEN if orb_tang > 0.9 else (AMBER if orb_tang > 0.7 else RED)
+            row("CUR RAD",   f"{orb_cur:.1f} m",      ry, DIM);       ry += 14
+            row("DES RAD",   f"{orb_des:.1f} m",      ry, DIM);       ry += 14
+            row("RAD ERR",   f"{orb_rerr:+.1f} m",    ry, rerr_col); ry += 14
+            row("RAD VEL",   f"{orb_vrad:+.2f} m/s",  ry, vrad_col); ry += 14
+            row("RAD STD",   f"{orb_std:.1f} m",       ry, std_col);  ry += 14
+            row("TANG FRAC", f"{orb_tang:+.3f}",       ry, tang_col); ry += 10
 
         # ── ALT HOLD info (only in ALTITUDE_HOLD mode) ────────────────────────
         if mode == FlightMode.ALTITUDE_HOLD:
@@ -1303,8 +1358,12 @@ class Renderer:
             patch["mission_total"] = env.mission.num_segments
         if int(env.mode) == int(FlightMode.WAYPOINT) and t is not None:
             patch["wp_curr_dist"] = float(np.linalg.norm(env._state.pos - t.position))
-        patch["wp_arrived"]       = bool(getattr(env, '_waypoint_reached', False))
-        patch["wp_arrival_steps"] = int(getattr(env, '_wp_arrival_steps', 0))
+        patch["wp_arrived"]          = bool(getattr(env, '_waypoint_reached', False))
+        patch["wp_arrival_steps"]    = int(getattr(env, '_wp_arrival_steps', 0))
+        patch["wp_capture_event"]    = bool(getattr(env, '_wp_capture_event', False))
+        patch["wp_captured_count"]   = int(getattr(env, '_wp_captured_count', 0))
+        patch["wp_state"]            = str(getattr(env, '_wp_state', 'approaching'))
+        patch["wp_transition_timer"] = int(getattr(env, '_wp_transition_timer', 0))
 
         _ss.update(patch)
         self.render_state(_ss.read())
