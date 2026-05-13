@@ -1,0 +1,64 @@
+LOITER is now stable, but the path is still wandering instead of converging to a clean circular orbit.
+
+Do not change flight physics unless absolutely necessary.
+
+Focus on LOITER reward shaping and diagnostics.
+
+Current problem:
+- aircraft survives
+- reward is high
+- turns are stable
+- but trajectory wanders all over the place
+- it does not hold a consistent circular orbit radius
+
+Tasks:
+
+1. Add explicit desired loiter radius tracking.
+Compute:
+- distance_to_target
+- desired_loiter_radius
+- radial_error = distance_to_target - desired_loiter_radius
+
+Add smooth reward:
+- high reward when abs(radial_error) is small
+- penalty when too far or too close
+- do not make it binary
+
+2. Add radial velocity penalty.
+Compute radial velocity:
+- positive = moving away from loiter center
+- negative = moving toward loiter center
+
+Penalty:
+- penalize abs(radial_velocity)
+- this encourages staying on a constant-radius orbit
+
+3. Strengthen tangential velocity reward.
+Reward velocity component tangent to the circle.
+Penalize velocity component pointing directly toward/away from center.
+
+4. Add orbit quality diagnostics to HUD/logs:
+- current radius
+- desired radius
+- radial error
+- radial velocity
+- radius standard deviation over recent window
+- tangential velocity ratio
+
+5. Keep coordinated-turn and sideslip rewards active.
+
+6. Avoid overfitting:
+- do not make the aircraft chase the circle with violent corrections
+- keep reward smooth
+- preserve fixed-wing behavior
+
+7. After changes:
+- resume LOITER training from latest checkpoint
+- expect temporary reward drop
+- monitor radius standard deviation and radial velocity
+
+Goal:
+- stable smooth circular or slightly oval loiter
+- low radius variance
+- low radial velocity
+- reduced wandering
