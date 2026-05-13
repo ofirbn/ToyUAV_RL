@@ -1,0 +1,310 @@
+```text
+The current simulator/dashboard architecture is good, but the actual aircraft behavior is still fundamentally wrong.
+
+The UAV still behaves more like:
+- an unstable hovering rigid body
+- twitchy RC toy
+- oscillating physics object
+
+instead of:
+- stable aerodynamic fixed-wing aircraft
+- ISR UAV
+- trainer aircraft
+- smooth energy-managed platform
+
+We need to fix the flight dynamics, controller smoothness, and attitude visualization.
+
+============================================================
+CURRENT PROBLEMS OBSERVED
+============================================================
+
+1. Aircraft visually appears almost knife-edged / vertical at times.
+2. Roll oscillations are extremely high-frequency.
+3. Aircraft looks like it flaps wings like a butterfly.
+4. Control surfaces saturate frequently.
+5. Stabilize mode still stalls too often.
+6. Flight path looks twitchy and non-aerodynamic.
+7. Aircraft feels massless and overpowered.
+8. Success/crash oscillation is chaotic.
+9. PPO metrics panel may not be wired correctly.
+10. Visual orientation may not match telemetry attitude.
+
+============================================================
+PRIORITY 1 — FIX AIRCRAFT ROTATIONAL DYNAMICS
+============================================================
+
+Current roll/pitch/yaw response is too aggressive.
+
+Implement realistic rotational inertia.
+
+Increase:
+- roll inertia
+- pitch inertia
+- yaw inertia
+
+The aircraft should:
+- bank gradually
+- pitch gradually
+- yaw smoothly
+
+NOT:
+- instantly snap
+- oscillate rapidly
+- twitch
+
+============================================================
+PRIORITY 2 — ADD STRONG AERODYNAMIC DAMPING
+============================================================
+
+Add:
+- roll damping
+- pitch damping
+- yaw damping
+
+Angular rates should naturally decay.
+
+Implement:
+roll_rate *= damping
+pitch_rate *= damping
+yaw_rate *= damping
+
+Use realistic damping values.
+
+The aircraft should naturally calm itself instead of oscillating forever.
+
+============================================================
+PRIORITY 3 — REDUCE CONTROL AUTHORITY
+============================================================
+
+Current elevator/aileron authority is too strong.
+
+Reduce:
+- aileron effectiveness
+- elevator effectiveness
+- rudder effectiveness
+
+Especially at low airspeed.
+
+The aircraft should NOT be capable of absurd instantaneous rotations.
+
+============================================================
+PRIORITY 4 — ACTUATOR LAG / CONTROL FILTERING
+============================================================
+
+Do NOT apply PPO outputs directly to surfaces.
+
+Implement actuator smoothing:
+
+actual_control =
+0.9 * previous_control +
+0.1 * commanded_control
+
+Use separately for:
+- elevator
+- aileron
+- rudder
+- throttle
+
+This is critical.
+
+The aircraft should feel:
+heavy
+smooth
+inertial
+stable
+
+============================================================
+PRIORITY 5 — FLIGHT ENVELOPE PROTECTION
+============================================================
+
+At low airspeed:
+- reduce roll authority
+- reduce pitch authority
+- reduce yaw authority
+
+Aircraft near stall should become sluggish,
+NOT hyper-agile.
+
+============================================================
+PRIORITY 6 — IMPROVE STALL MODEL
+============================================================
+
+Current aircraft stalls too often.
+
+Implement smoother stall behavior.
+
+Instead of:
+hard lift cutoff
+
+Use:
+gradual lift degradation near stall speed.
+
+Example:
+if airspeed < stall_speed:
+    lift_scale = clamp(airspeed / stall_speed, 0.3, 1.0)
+
+Add:
+- natural nose-down tendency during stall
+- increased drag
+- sluggish controls
+
+============================================================
+PRIORITY 7 — STABILIZE MODE SHOULD BE EASY
+============================================================
+
+Current stabilize curriculum still crashes too much.
+
+For STABILIZE mode:
+- disable aggressive randomization
+- start aircraft nearly level
+- safe airspeed
+- low turbulence
+- moderate altitude
+
+Goal:
+teach aircraft calm stable flight first.
+
+============================================================
+PRIORITY 8 — REWARD SHAPING FIXES
+============================================================
+
+Strongly penalize:
+- rapid roll rate
+- rapid pitch rate
+- rapid yaw rate
+- action oscillation
+- sign flipping controls
+
+Add:
+action_delta_penalty
+
+reward -= k * |action - prev_action|
+
+Add:
+surface_saturation_penalty
+
+If controls near max deflection too long:
+apply penalty.
+
+============================================================
+PRIORITY 9 — ADD NATURAL STABILITY
+============================================================
+
+Add aerodynamic restoring tendencies:
+- wings-level tendency
+- pitch trim tendency
+- yaw stability
+
+Aircraft should naturally prefer stable flight.
+
+It should require effort to destabilize.
+
+============================================================
+PRIORITY 10 — FIX ATTITUDE VISUALIZATION
+============================================================
+
+Visual aircraft orientation currently appears inconsistent with telemetry.
+
+Investigate:
+- Euler rotation order
+- axis conventions
+- sign conventions
+- handedness mismatch
+
+Ensure:
+visual roll/pitch/yaw matches telemetry exactly.
+
+============================================================
+PRIORITY 11 — VISUAL SMOOTHING
+============================================================
+
+Renderer should smooth displayed attitude.
+
+Do NOT render raw instantaneous attitude directly.
+
+Implement render interpolation:
+render_roll =
+lerp(previous_render_roll, true_roll, 0.1)
+
+Same for:
+- pitch
+- yaw
+
+This removes visual jitter/butterfly effect.
+
+============================================================
+PRIORITY 12 — CAMERA IMPROVEMENTS
+============================================================
+
+Improve chase camera:
+- smoother following
+- slight lag
+- stable horizon
+- better visibility of wingspan
+
+Camera should emphasize:
+smooth flight behavior.
+
+============================================================
+PRIORITY 13 — PPO METRICS FIX
+============================================================
+
+Current PPO metrics panel often shows zeros.
+
+Ensure telemetry correctly updates:
+- policy loss
+- value loss
+- entropy
+- approx_kl
+- explained_variance
+
+Verify training metrics are live.
+
+============================================================
+PRIORITY 14 — HEALTHY STABILIZE BEHAVIOR TARGET
+============================================================
+
+After fixes, stabilize mode should produce:
+- wings-level flight
+- smooth gentle turns
+- stable airspeed
+- near-zero stall rate
+- low control deflections
+- smooth trajectories
+- calm behavior
+
+Aircraft should look:
+aerodynamic
+stable
+heavy
+realistic
+smooth
+
+NOT:
+twitchy
+hyperactive
+knife-edged
+insect-like
+arcade-like
+
+============================================================
+IMPORTANT IMPLEMENTATION ORDER
+============================================================
+
+Implement in this order:
+
+1. rotational inertia
+2. damping
+3. actuator smoothing
+4. reduced authority
+5. stall fixes
+6. reward penalties
+7. stability tendencies
+8. visualization smoothing
+9. camera smoothing
+10. telemetry fixes
+
+After implementation:
+run stabilize curriculum again
+and verify visually that aircraft behaves like a believable fixed-wing UAV.
+```

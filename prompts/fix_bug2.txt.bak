@@ -1,0 +1,123 @@
+No — not during a dedicated stabilize curriculum phase.
+
+For proper curriculum learning, stabilize training should be extremely narrow and clean.
+
+During:
+
+```text
+curriculum_phase=stabilize
+```
+
+the aircraft should ONLY learn:
+
+* wings level
+* stable pitch
+* stable airspeed
+* smooth control
+* no stall
+
+It should NOT:
+
+* switch to heading hold
+* switch to waypoint
+* switch to recovery
+* chase navigation objectives
+
+Right now your mode manager is probably doing:
+
+* automatic fallback logic
+* autopilot state transitions
+* mixed-task scheduling
+
+even though curriculum says stabilize.
+
+That contaminates the learning signal.
+
+Tell Claude:
+
+```text
+Bug: during curriculum_phase=stabilize, the trainer still switches between:
+- STABILIZE
+- HDG_HOLD
+
+This is incorrect.
+
+Fix curriculum isolation.
+
+Requirements:
+
+1. When:
+curriculum_phase=stabilize
+
+Then:
+active_mode MUST ALWAYS remain STABILIZE.
+
+No automatic transitions allowed.
+
+2. Disable:
+- heading capture
+- waypoint logic
+- recovery switching
+- mission progression
+- auto-navigation
+- loiter logic
+- approach logic
+
+3. Stabilize phase objective should ONLY be:
+- maintain wings level
+- maintain near-zero roll rate
+- maintain near-zero pitch rate
+- maintain safe airspeed
+- maintain smooth flight
+
+4. Heading should NOT be controlled yet.
+
+The aircraft may drift in yaw/heading naturally during stabilize phase.
+
+That is acceptable.
+
+5. Remove any logic like:
+if heading_error < threshold:
+    switch to HDG_HOLD
+
+or:
+if stable:
+    activate heading controller
+
+6. Add strict curriculum lock:
+
+if curriculum_phase == "stabilize":
+    active_mode = STABILIZE
+    disable_all_other_modes = True
+
+7. Add telemetry validation:
+Display:
+- curriculum_phase
+- active_mode
+
+They should both remain:
+STABILIZE
+
+throughout stabilize curriculum.
+
+8. Add assertion:
+
+if curriculum_phase == "stabilize":
+    assert active_mode == STABILIZE
+
+9. Important:
+Do NOT blend stabilize and heading-hold rewards.
+
+Only use stabilize reward terms during stabilize curriculum.
+
+10. Goal:
+The aircraft should first learn:
+- calm aerodynamic stability
+- smooth controls
+- energy management
+
+ONLY AFTER that:
+train heading hold separately.
+```
+
+Right now your trainer is still trying to multitask too early.

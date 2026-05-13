@@ -1,0 +1,24 @@
+Remove argparse entirely.
+
+Replace command-line arguments with config.txt.
+
+main.py should:
+1. read config.txt
+2. parse key=value pairs
+3. dispatch automatically based on:
+   mode=train
+   mode=visualize
+   mode=demo
+
+Do not require command line parameters anymore.
+
+I want to simply run:
+python main.py
+
+Config file should support:
+mode=
+timesteps=
+mission=
+model=
+
+If config file missing, create default automatically.

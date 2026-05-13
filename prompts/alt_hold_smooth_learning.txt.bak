@@ -1,0 +1,45 @@
+During ALT_HOLD training, reward suddenly drops even though crash/stall are low.
+
+Investigate and fix ALT_HOLD reward/success logic.
+
+Add telemetry:
+- target_altitude
+- altitude_error
+- target_airspeed
+- airspeed_error
+- vertical_speed
+- throttle_command
+- throttle_actual
+- throttle_delta
+
+Likely issue:
+the aircraft survives but misses altitude/energy target, so reward collapses.
+
+Fixes:
+1. Use staged altitude tolerance:
+   early: abs(altitude_error) < 30m
+   mid: < 15m
+   final: < 7m
+
+2. Reward altitude error smoothly:
+   altitude_reward = exp(-abs(altitude_error) / tolerance)
+
+3. Reward target airspeed:
+   target_airspeed = 14.0
+   airspeed_reward = exp(-abs(airspeed-target_airspeed)/3.0)
+
+4. Penalize vertical speed only mildly:
+   do not punish necessary climb/descent corrections too hard.
+
+5. Increase cruise throttle trim so level flight is naturally possible:
+   trim_throttle around 0.60.
+
+6. Keep throttle smoothing, but ensure it is not so slow that altitude correction becomes impossible.
+
+7. In ALT_HOLD, train with 70% ALT_HOLD and 30% STABILIZE replay.
+
+8. Display which ALT_HOLD unlock condition is failing:
+   altitude_error too high / speed too low / vertical speed too high / success too low.
+
+Goal:
+ALT_HOLD should learn smooth energy management, not collapse reward while safely flying.

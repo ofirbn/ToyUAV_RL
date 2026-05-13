@@ -1,0 +1,124 @@
+Waypoint training shows a major reward discontinuity at waypoint arrival.
+
+Evidence:
+- reward climbs steadily while approaching waypoint
+- reward suddenly collapses immediately after:
+  "WAYPOINT REACHED"
+
+Flight behavior itself remains healthy:
+- no crash
+- no stall
+- stable aircraft
+
+This strongly suggests:
+reward/state-machine discontinuity,
+NOT flight instability.
+
+============================================================
+LIKELY BUGS
+============================================================
+
+Possible causes:
+1. progress reward disappears after arrival
+2. arrival bonus too small or zero
+3. next-waypoint transition bug
+4. distance normalization discontinuity
+5. reward semantics misaligned with mission success
+
+============================================================
+REQUIRED FIXES
+============================================================
+
+1. Add meaningful waypoint arrival reward.
+
+Current:
+arrival_bonus ≈ 0
+
+Increase substantially.
+
+Waypoint completion should feel rewarding.
+
+============================================================
+2. Smooth waypoint transitions.
+============================================================
+
+When switching to next waypoint:
+do NOT instantly reset distance metrics in a way that creates negative progress spikes.
+
+Use:
+continuous interpolation.
+
+============================================================
+3. Freeze progress reward briefly after arrival.
+============================================================
+
+After waypoint reached:
+hold positive completion reward for short duration.
+
+Prevent:
+instant reward collapse.
+
+============================================================
+4. Detect discontinuities explicitly.
+============================================================
+
+Add debug telemetry:
+- prev_target_distance
+- current_target_distance
+- progress_reward
+- waypoint_switch_event
+
+============================================================
+5. Use segment-relative progress.
+============================================================
+
+Normalize progress relative to current leg only.
+
+Do NOT compare:
+old waypoint distance
+vs
+new waypoint distance.
+
+============================================================
+6. Add hysteresis around waypoint reach.
+============================================================
+
+Avoid rapid:
+enter/exit/re-enter
+waypoint state toggling.
+
+============================================================
+7. Add mission-state visualization.
+============================================================
+
+Display:
+- current waypoint index
+- total waypoints
+- waypoint transition events
+- arrival state timer
+
+============================================================
+8. Keep reward continuity.
+============================================================
+
+Total reward should remain smooth through waypoint transitions.
+
+A successful waypoint arrival should NEVER create:
+massive negative reward collapse.
+
+============================================================
+9. Align success metric and reward semantics.
+============================================================
+
+If mission logic says:
+SUCCESS
+
+reward should also remain positive/stable.
+
+============================================================
+10. Goal
+============================================================
+
+Waypoint navigation should train:
+continuous path-following behavior,
+not produce reward cliffs at waypoint transitions.

@@ -1,0 +1,174 @@
+Then the curriculum lock is fundamentally broken.
+
+Your mode manager is still running its autonomous transition logic even during locked curriculum training.
+
+This means something like:
+
+```python
+if stable:
+    mode = ALT_HOLD
+
+if heading_error:
+    mode = HDG_HOLD
+```
+
+is still executing globally.
+
+For curriculum learning, you need two completely different concepts:
+
+```text
+curriculum_phase
+≠
+autonomous_mode_manager
+```
+
+During isolated curriculum phases, the autonomous mode manager must be disabled entirely.
+
+Tell Claude this EXACTLY:
+
+```text
+Critical bug:
+curriculum_phase locking is NOT working.
+
+Even during:
+curriculum_phase=stabilize
+
+the environment still transitions between:
+- STABILIZE
+- ALT_HOLD
+- HDG_HOLD
+
+This completely breaks curriculum learning.
+
+============================================================
+ROOT CAUSE
+============================================================
+
+The autonomous mode manager is still active during isolated curriculum phases.
+
+Automatic transitions are still running globally.
+
+This is incorrect.
+
+============================================================
+REQUIRED FIX
+============================================================
+
+Implement HARD curriculum locking.
+
+When curriculum_phase is one of:
+- stabilize
+- altitude
+- heading
+- waypoint
+- loiter
+- approach
+- landing
+- recovery
+
+Then:
+ONLY the matching mode is allowed.
+
+NO automatic transitions.
+
+============================================================
+EXPLICIT MODE LOCK
+============================================================
+
+Implement:
+
+if curriculum_enabled and curriculum_phase != "mixed":
+
+    active_mode = curriculum_mode
+
+    disable_autonomous_mode_switching = True
+
+============================================================
+DISABLE ALL AUTO-TRANSITION LOGIC
+============================================================
+
+When curriculum is locked:
+DO NOT execute:
+- mode scheduler
+- mission transition logic
+- heading capture logic
+- altitude capture logic
+- recovery activation
+- waypoint advancement
+- loiter transitions
+- approach transitions
+
+Completely bypass autonomous mode manager.
+
+============================================================
+ONLY ALLOW:
+============================================================
+
+curriculum_phase=stabilize
+→ active_mode ALWAYS STABILIZE
+
+curriculum_phase=altitude
+→ active_mode ALWAYS ALT_HOLD
+
+curriculum_phase=heading
+→ active_mode ALWAYS HDG_HOLD
+
+etc.
+
+============================================================
+ONLY EXCEPTION
+============================================================
+
+curriculum_phase=mixed
+
+ONLY there:
+allow autonomous transitions.
+
+============================================================
+ADD DEBUG ASSERTIONS
+============================================================
+
+if curriculum_phase == "stabilize":
+    assert active_mode == STABILIZE
+
+if curriculum_phase == "altitude":
+    assert active_mode == ALT_HOLD
+
+if curriculum_phase == "heading":
+    assert active_mode == HDG_HOLD
+
+============================================================
+VISUALIZATION
+============================================================
+
+Display:
+- curriculum_phase
+- active_mode
+- autonomous_switching_enabled
+
+Expected during stabilize:
+curriculum_phase = STABILIZE
+active_mode = STABILIZE
+autonomous_switching_enabled = FALSE
+
+============================================================
+IMPORTANT
+============================================================
+
+Curriculum learning requires isolated skill acquisition.
+
+Right now the PPO policy is receiving contradictory reward objectives simultaneously.
+
+That destroys convergence quality.
+
+The aircraft must learn:
+1. stabilize
+THEN
+2. altitude hold
+THEN
+3. heading hold
+
+NOT all at once.
+```
+
+This is now the main blocker to proper convergence.

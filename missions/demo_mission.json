@@ -1,0 +1,40 @@
+{
+  "mission": [
+    {
+      "type": "takeoff",
+      "altitude": 50
+    },
+    {
+      "type": "waypoint",
+      "x": 0,
+      "y": 120,
+      "z": 40
+    },
+    {
+      "type": "waypoint",
+      "x": 80,
+      "y": 220,
+      "z": 55
+    },
+    {
+      "type": "loiter",
+      "x": 120,
+      "y": 260,
+      "z": 60,
+      "radius": 40,
+      "orbits": 1.5
+    },
+    {
+      "type": "approach",
+      "runway_x": 0,
+      "runway_y": 0,
+      "heading": 180
+    },
+    {
+      "type": "landing",
+      "runway_x": 0,
+      "runway_y": 0,
+      "heading": 180
+    }
+  ]
+}

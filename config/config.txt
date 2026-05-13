@@ -1,0 +1,4 @@
+mode=train
+timesteps=300000
+mission=missions/demo_mission.json
+model=models/fixed_wing_multimode_ppo.zip

@@ -1,0 +1,125 @@
+Loiter behavior has improved dramatically.
+
+The aircraft now:
+- performs stable sustained orbiting
+- uses moderate control surfaces
+- avoids rudder saturation
+- exhibits smoother guidance behavior
+
+However, coordinated-turn realism still incomplete.
+
+============================================================
+CURRENT MAIN ISSUE
+============================================================
+
+Telemetry shows:
+REQ_BANK ≈ 20°
+actual BANK ≈ 2°
+
+Yet aircraft still turns significantly.
+
+This indicates:
+turn dynamics still insufficiently tied to bank angle.
+
+The aircraft still partially "cheats" the turn.
+
+============================================================
+REQUIRED IMPROVEMENTS
+============================================================
+
+1. Strengthen bank-to-turn coupling.
+
+Turning should arise primarily from:
+tilted lift vector.
+
+Not:
+yaw steering.
+
+============================================================
+2. Reduce residual yaw steering authority further.
+============================================================
+
+Yaw should:
+- coordinate turn
+- damp sideslip
+
+NOT:
+generate substantial turn curvature.
+
+============================================================
+3. Improve lateral acceleration model.
+============================================================
+
+Bank angle should directly influence:
+centripetal acceleration.
+
+============================================================
+4. Increase realism of coordinated-turn dynamics.
+============================================================
+
+Proper turn relation:
+turn_rate ≈ g * tan(bank) / airspeed
+
+Use this relationship explicitly.
+
+============================================================
+5. Add bank tracking reward.
+============================================================
+
+Reward matching:
+actual_bank ↔ required_bank
+
+============================================================
+6. Penalize turning with insufficient bank.
+============================================================
+
+If:
+turn_rate high
+AND bank low
+
+apply penalty.
+
+============================================================
+7. Improve orbit acquisition logic.
+============================================================
+
+Current loiter still occasionally diverges during orbit capture.
+
+Use:
+- smoother intercept trajectory
+- predictive tangential capture
+- lower aggressiveness near target radius
+
+============================================================
+8. Raise target loiter cruise speed.
+============================================================
+
+Current loiter speed still low.
+
+Target:
+13–16 m/s.
+
+Reduce:
+high-AoA low-energy orbiting.
+
+============================================================
+9. Add telemetry validation.
+============================================================
+
+Current telemetry appears partially inconsistent:
+trajectory curvature vs reported turn rate.
+
+Validate:
+- turn-rate computation
+- heading derivative
+- lateral acceleration telemetry
+
+============================================================
+10. PPO telemetry still broken.
+============================================================
+
+Fix PPO metrics panel:
+- policy loss
+- value loss
+- KL
+- entropy

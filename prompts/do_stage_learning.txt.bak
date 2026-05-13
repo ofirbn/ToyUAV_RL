@@ -1,0 +1,29 @@
+Implement curriculum-based staged training.
+
+Do NOT randomly switch all tasks from the beginning.
+
+Training progression:
+
+1. stabilize
+2. cruise
+3. altitude hold
+4. heading hold
+5. waypoint follow
+6. loiter
+7. approach
+8. landing
+9. mixed missions
+
+Each phase has:
+- separate success conditions
+- separate rewards
+- separate difficulty
+- separate environment randomization
+
+Only progress when success threshold achieved.
+
+Example:
+if success_rate > 80%:
+    unlock next phase
+
+Mixed mission training should only occur after stable mastery of core flight.

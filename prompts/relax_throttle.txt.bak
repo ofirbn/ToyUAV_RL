@@ -1,0 +1,32 @@
+Improve ALT_HOLD throttle learning.
+
+Problem:
+Throttle is hunting / slow to converge during altitude hold.
+
+Implement:
+1. Very slow throttle actuator lag:
+   throttle_actual = 0.995 * prev_throttle + 0.005 * throttle_command
+
+2. Strong throttle derivative penalty:
+   penalize abs(throttle_actual - prev_throttle_actual)
+
+3. Add natural cruise trim:
+   default trim throttle around 0.55–0.65 should maintain level safe cruise.
+
+4. Add target airspeed reward in ALT_HOLD:
+   target_airspeed = 14 m/s
+   reward smooth tracking of target airspeed.
+
+5. Add throttle deadband:
+   ignore tiny throttle command changes below 0.02.
+
+6. Display:
+   throttle_command
+   throttle_actual
+   throttle_delta
+   target_airspeed
+   airspeed_error
+
+Goal:
+Throttle should become slow, smooth, energy-management behavior,
+not fast twitchy control.

@@ -1,0 +1,12 @@
+mode=train_visual
+timesteps=3000000
+mission=missions/demo_mission.json
+model=models/latest.zip
+force_new=true
+curriculum=true
+curriculum_phase=stabilize
+visualize_training=true
+save_every=100000
+action_smooth_weight=0.03
+stall_speed=6.0
+wireframe=false

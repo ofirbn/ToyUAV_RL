@@ -1,0 +1,127 @@
+Critical curriculum initialization bug.
+
+Training starts immediately in WAYPOINT mode instead of foundational stabilize training.
+
+This is completely wrong.
+
+============================================================
+REQUIRED BEHAVIOR
+============================================================
+
+When:
+
+curriculum_enabled=true
+
+AND:
+
+curriculum_phase=stabilize
+
+The simulator MUST start in:
+STABILIZE mode ONLY.
+
+============================================================
+CURRENT BUG
+============================================================
+
+Some autonomous initialization logic is overriding the curriculum phase and activating:
+WAYPOINT mode.
+
+This must never happen.
+
+============================================================
+FIX REQUIRED
+============================================================
+
+Curriculum phase must fully override:
+- mission manager
+- autonomous mode scheduler
+- default mode selection
+- mission startup logic
+- waypoint activation
+- navigation initialization
+
+============================================================
+IMPLEMENT HARD OVERRIDE
+============================================================
+
+During env reset():
+
+if curriculum_enabled:
+
+    active_mode = curriculum_mode
+
+    disable mission-driven transitions
+    disable autonomous startup selection
+    disable waypoint activation
+
+============================================================
+EXPECTED BEHAVIOR
+============================================================
+
+If:
+curriculum_phase=stabilize
+
+Then after reset:
+active_mode MUST ALWAYS equal STABILIZE.
+
+No exceptions.
+
+============================================================
+IMPORTANT
+============================================================
+
+During isolated curriculum phases:
+- mission manager should be bypassed
+- waypoint logic disabled
+- navigation targets ignored
+
+The aircraft should ONLY learn the requested skill.
+
+============================================================
+ONLY ENABLE MISSION SYSTEM WHEN:
+============================================================
+
+curriculum_phase == mixed
+
+OR:
+curriculum_enabled == false
+
+============================================================
+ADD DEBUG OUTPUT
+============================================================
+
+On every env reset print:
+
+CURRICULUM ENABLED
+CURRICULUM PHASE = STABILIZE
+ACTIVE MODE = STABILIZE
+MISSION MANAGER ENABLED = FALSE
+
+============================================================
+ADD ASSERTIONS
+============================================================
+
+if curriculum_phase == "stabilize":
+    assert active_mode == STABILIZE
+
+if curriculum_phase != "mixed":
+    assert mission_manager_enabled == False
+
+============================================================
+VISUALIZATION
+============================================================
+
+Display prominently:
+CURRENT CURRICULUM PHASE
+CURRENT ACTIVE MODE
+
+During stabilize training:
+both MUST remain STABILIZE.
+
+============================================================
+FINAL REQUIREMENT
+============================================================
+
+The trainer must NEVER start directly in WAYPOINT mode during stabilize curriculum.
+
+Foundational stabilization training MUST happen first before any navigation tasks are introduced.

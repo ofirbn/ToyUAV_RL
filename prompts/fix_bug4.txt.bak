@@ -1,0 +1,151 @@
+Curriculum progression logic is too aggressive.
+
+The trainer is progressing into advanced flight tasks like WAYPOINT before the aircraft has truly mastered foundational flight skills.
+
+This is incorrect.
+
+============================================================
+CURRENT PROBLEM
+============================================================
+
+The aircraft still:
+- stalls frequently
+- oscillates
+- saturates controls
+- lacks smooth stable flight
+
+Yet curriculum already unlocks:
+- waypoint
+- advanced navigation
+
+This contaminates PPO learning.
+
+============================================================
+REQUIRED FIX
+============================================================
+
+Curriculum progression must be MASTERY-BASED,
+NOT timestep-based.
+
+Do NOT unlock the next phase simply because enough timesteps elapsed.
+
+============================================================
+IMPLEMENT MASTERY GATES
+============================================================
+
+Only advance curriculum when current skill is truly stable.
+
+============================================================
+STABILIZE MASTERY REQUIREMENTS
+============================================================
+
+Before unlocking ALTITUDE_HOLD:
+
+Require ALL:
+
+success_rate > 90%
+crash_rate < 5%
+stall_rate < 5%
+mean_episode_length > threshold
+mean_roll_rate < threshold
+mean_pitch_rate < threshold
+control_oscillation_metric low
+
+Aircraft should visually:
+- fly smoothly
+- remain wings-level
+- avoid stalls
+- use small control inputs
+
+============================================================
+ALTITUDE HOLD MASTERY
+============================================================
+
+Before unlocking HDG_HOLD:
+
+Require:
+stable altitude tracking
+low vertical oscillation
+stable airspeed
+low stall rate
+smooth controls
+
+============================================================
+HEADING HOLD MASTERY
+============================================================
+
+Before unlocking WAYPOINT:
+
+Require:
+smooth coordinated turns
+stable heading convergence
+low bank oscillation
+low stall rate during turns
+
+============================================================
+WAYPOINT MASTERY
+============================================================
+
+Before unlocking LOITER:
+Require:
+consistent waypoint interception
+smooth path following
+stable energy management
+
+============================================================
+APPROACH / LANDING
+============================================================
+
+Do NOT unlock approach or landing until:
+core flight behavior is highly stable.
+
+============================================================
+IMPORTANT
+============================================================
+
+Foundational flight stabilization MUST become nearly automatic before introducing navigation complexity.
+
+Otherwise PPO learns:
+- unstable multitask compromise behavior
+instead of:
+- robust piloting skills.
+
+============================================================
+ADD CURRICULUM TELEMETRY
+============================================================
+
+Display:
+- current curriculum phase
+- mastery score
+- unlock criteria
+- which criteria still failing
+- estimated readiness for next phase
+
+Example:
+STALL_RATE_TOO_HIGH
+CONTROL_OSCILLATION_TOO_HIGH
+ROLL_STABILITY_NOT_MET
+
+============================================================
+VISUALIZATION
+============================================================
+
+Add:
+"NEXT PHASE LOCKED"
+
+until mastery achieved.
+
+============================================================
+FINAL GOAL
+============================================================
+
+The UAV should learn:
+1. stable flight
+2. smooth energy management
+3. coordinated turning
+4. navigation
+5. loiter
+6. approach
+7. landing
+
+in that order.

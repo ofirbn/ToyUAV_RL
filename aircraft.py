@@ -10,12 +10,14 @@ class AircraftState:
         'pitch', 'roll', 'yaw',
         'pitch_rate', 'roll_rate', 'yaw_rate',
         'throttle_pos', 'flap_pos',
+        'elevator_pos', 'aileron_pos', 'rudder_pos',
     )
 
     def __init__(self, pos, vel,
                  pitch=0.0, roll=0.0, yaw=0.0,
                  pitch_rate=0.0, roll_rate=0.0, yaw_rate=0.0,
-                 throttle_pos=0.5, flap_pos=0.0):
+                 throttle_pos=0.5, flap_pos=0.0,
+                 elevator_pos=0.0, aileron_pos=0.0, rudder_pos=0.0):
         self.pos          = np.array(pos,  dtype=float)
         self.vel          = np.array(vel,  dtype=float)
         self.pitch        = float(pitch)
@@ -26,6 +28,9 @@ class AircraftState:
         self.yaw_rate     = float(yaw_rate)
         self.throttle_pos = float(throttle_pos)
         self.flap_pos     = float(flap_pos)
+        self.elevator_pos = float(elevator_pos)
+        self.aileron_pos  = float(aileron_pos)
+        self.rudder_pos   = float(rudder_pos)
 
     def copy(self):
         s = AircraftState.__new__(AircraftState)
@@ -39,6 +44,9 @@ class AircraftState:
         s.yaw_rate     = self.yaw_rate
         s.throttle_pos = self.throttle_pos
         s.flap_pos     = self.flap_pos
+        s.elevator_pos = self.elevator_pos
+        s.aileron_pos  = self.aileron_pos
+        s.rudder_pos   = self.rudder_pos
         return s
 
     @property
@@ -63,39 +71,44 @@ class AircraftPhysics:
     MASS       = 2.5     # kg
     WING_AREA  = 0.40    # m²
     RHO        = 1.225   # kg/m³  (sea-level)
-    MAX_THRUST = 12.0    # N  (T/W ≈ 0.49 — fixed-wing cannot hover on thrust alone)
+    MAX_THRUST = 12.0    # N  (T/W ≈ 0.49)
     G          = 9.81    # m/s²
 
-    # ---- actuator effectiveness (rated at Q_REF) ----
-    ELEV_GAIN  =  2.0    # pitch angular accel per unit elevator (rad/s²)
-    AIL_GAIN   =  3.5    # roll  angular accel per unit aileron  (rad/s²)
-    RUDD_GAIN  =  0.6    # yaw   angular accel per unit rudder   (rad/s²)
+    # ---- control surface authority (heavy trainer UAV — slow to respond) ----
+    ELEV_GAIN  = 0.45    # reduced: slow pitch response
+    AIL_GAIN   = 0.70    # reduced: slower roll response, less aggressive bank
+    RUDD_GAIN  = 0.06    # very weak: trim sideslip only, bank drives the turn
 
-    # ---- aerodynamic damping ----
-    PITCH_DAMP = 1.8
-    ROLL_DAMP  = 2.5
-    YAW_DAMP   = 1.2
+    # ---- very strong aerodynamic damping — rates decay quickly ----
+    PITCH_DAMP = 7.0
+    ROLL_DAMP  = 9.0
+    YAW_DAMP   = 5.0
 
-    # ---- static stability (restoring moments) ----
-    # Without these the aircraft is pitch/roll neutral: a held input spins
-    # forever instead of settling at a trim angle.  With them, elevator and
-    # aileron act as angle commands: trim_pitch = elevator * ELEV_GAIN/PITCH_STAB
-    # and trim_roll = aileron * AIL_GAIN/ROLL_STAB.
-    PITCH_STAB = 2.0    # = ELEV_GAIN  →  elevator 0.15 trims to 0.15 rad pitch
-    ROLL_STAB  = 3.5    # = AIL_GAIN   →  aileron  0.30 trims to 0.30 rad bank
+    # ---- static stability: strong restoring tendency to wings-level/trim ----
+    PITCH_STAB = 2.5     # strong pitch trim tendency
+    # ROLL_STAB reduced so bank is sustainable without constant aileron pressure.
+    # With AIL_GAIN=0.8: max sustainable bank = AIL_GAIN/ROLL_STAB ≈ 41°.
+    ROLL_STAB  = 1.2     # mild dihedral — allows coordinated loiter bank angles
 
-    # ---- actuator lags (time constant, s⁻¹) ----
-    THROTTLE_LAG = 3.0   # throttle responds quickly
-    FLAP_LAG     = 0.8   # flaps deploy slowly
+    # ---- strong actuator lag: actual = 0.95*prev + 0.05*cmd per step ----
+    ELEV_LAG     = 0.5   # 5% per 0.1s step → heavy lag
+    AIL_LAG      = 0.5
+    RUDD_LAG     = 0.5
+    THROTTLE_LAG = 0.05   # 0.005 per step → 0.995*prev + 0.005*cmd
+    FLAP_LAG     = 0.8
+
+    # ---- surface rate limits (max change per second) ----
+    SURF_RATE_LIMIT = 0.50  # units/s — slightly slower for smoother response
 
     # ---- stall model ----
-    STALL_ALPHA = math.radians(14)        # AoA where CL peaks (~0.244 rad)
-    Q_REF       = 0.5 * 1.225 * 10.0**2  # dynamic pressure at 10 m/s (61.25 Pa)
+    STALL_ALPHA      = math.radians(13)
+    STALL_NOSE_DOWN  = 7.0   # strong nose-down tendency past stall
+    Q_REF            = 0.5 * 1.225 * 10.0**2
 
     # ---- safe limits ----
-    MAX_PITCH  = math.pi / 3      # ±60°
-    MAX_ROLL   = math.pi / 2      # ±90°
-    MIN_SPEED  = 1.0              # floor for q calculation only — state.vel is never rescaled
+    MAX_PITCH  = math.pi / 3
+    MAX_ROLL   = math.pi / 2
+    MIN_SPEED  = 1.0
 
     def step(self, state: AircraftState, actuators, dt: float = 0.1) -> AircraftState:
         throttle  = float(np.clip(actuators[0], 0.0, 1.0))
@@ -104,24 +117,56 @@ class AircraftPhysics:
         rudder    = float(np.clip(actuators[3], -1.0, 1.0))
         flaps     = float(np.clip(actuators[4],  0.0, 1.0))
 
-        # --- actuator lags ---
-        state.throttle_pos += (throttle - state.throttle_pos) * self.THROTTLE_LAG * dt
-        state.flap_pos     += (flaps    - state.flap_pos)     * self.FLAP_LAG     * dt
+        # --- actuator lags with rate limiting (heavy lag: ~5% per step) ---
+        max_surf = self.SURF_RATE_LIMIT * dt
+        def _lag(cur, cmd, lag):
+            delta = float(np.clip((cmd - cur) * lag * dt, -max_surf, max_surf))
+            return cur + delta
 
-        # --- dynamic pressure gates all aero forces and control authority ---
-        # FIX 1: control surfaces lose effectiveness as airspeed drops;
-        #        at low q the elevator can no longer hold a high-AoA attitude.
+        state.throttle_pos = float(np.clip(
+            state.throttle_pos + (throttle - state.throttle_pos) * self.THROTTLE_LAG * dt,
+            0.0, 1.0))
+        state.flap_pos     = float(np.clip(
+            state.flap_pos + (flaps - state.flap_pos) * self.FLAP_LAG * dt,
+            0.0, 1.0))
+        state.elevator_pos = float(np.clip(_lag(state.elevator_pos, elevator, self.ELEV_LAG), -1.0, 1.0))
+        state.aileron_pos  = float(np.clip(_lag(state.aileron_pos,  aileron,  self.AIL_LAG),  -1.0, 1.0))
+        state.rudder_pos   = float(np.clip(_lag(state.rudder_pos,   rudder,   self.RUDD_LAG), -1.0, 1.0))
+
+        # smoothed surface positions drive all angular dynamics
+        eff_elev = state.elevator_pos
+        eff_ail  = state.aileron_pos
+        eff_rudd = state.rudder_pos
+
+        # --- dynamic pressure — gates all aero forces and control authority ---
         v_act   = float(np.linalg.norm(state.vel))
-        v       = max(v_act, self.MIN_SPEED)   # floored only for turn-rate / gamma calcs
-        q       = 0.5 * self.RHO * v_act ** 2  # actual speed — zero lift at zero airspeed
-        q_ratio = q / self.Q_REF   # 1.0 at 10 m/s, ~0.25 at 5 m/s
+        v       = max(v_act, self.MIN_SPEED)
+        q       = 0.5 * self.RHO * v_act ** 2
+        q_ratio = q / self.Q_REF   # 1.0 at cruise (10 m/s), 0.25 at half speed
+
+        # --- AoA for stall model (needed before angular dynamics for nose-down) ---
+        vh    = math.sqrt(state.vel[0] ** 2 + state.vel[1] ** 2)
+        gamma = math.atan2(state.vel[2], max(vh, 0.1))
+        alpha = state.pitch - gamma
 
         # --- angular dynamics: gains + restoring moments scale with q_ratio ---
-        p_acc = (elevator * self.ELEV_GAIN - self.PITCH_STAB * state.pitch) * q_ratio \
+        p_acc = (eff_elev * self.ELEV_GAIN - self.PITCH_STAB * state.pitch) * q_ratio \
                 - self.PITCH_DAMP * state.pitch_rate
-        r_acc = (aileron  * self.AIL_GAIN  - self.ROLL_STAB  * state.roll)  * q_ratio \
+        r_acc = (eff_ail  * self.AIL_GAIN  - self.ROLL_STAB  * state.roll)  * q_ratio \
                 - self.ROLL_DAMP  * state.roll_rate
-        y_acc = rudder   * self.RUDD_GAIN * q_ratio - self.YAW_DAMP   * state.yaw_rate
+
+        # Coordinated-turn equilibrium: yaw_rate naturally settles at g·tan(bank)/v.
+        # Rudder adds a small perturbation about this equilibrium; it cannot generate
+        # significant turn curvature independently of bank angle.
+        cr_safe  = max(math.cos(state.roll), 0.1)
+        coord_yr = (self.G / v) * math.sin(state.roll) / cr_safe   # g·tan(bank)/v
+        y_acc = eff_rudd * self.RUDD_GAIN * q_ratio \
+                - self.YAW_DAMP * (state.yaw_rate - coord_yr)
+
+        # --- natural nose-down moment in stall (prevents hanging at high AoA) ---
+        if alpha > self.STALL_ALPHA:
+            stall_excess = alpha - self.STALL_ALPHA
+            p_acc -= stall_excess * self.STALL_NOSE_DOWN
 
         state.pitch_rate += p_acc * dt
         state.roll_rate  += r_acc * dt
@@ -131,31 +176,24 @@ class AircraftPhysics:
                                     -self.MAX_PITCH, self.MAX_PITCH))
         state.roll  = float(np.clip(state.roll  + state.roll_rate  * dt,
                                     -self.MAX_ROLL,  self.MAX_ROLL))
+        # yaw_rate already converges to g·tan(bank)/v via y_acc above;
+        # no separate coord-turn shortcut needed.
         state.yaw  += state.yaw_rate * dt
 
-        # --- coordinated turn ---
-        state.yaw += (self.G / v) * math.sin(state.roll) * dt
-
-        # --- aerodynamics ---
-        vh    = math.sqrt(state.vel[0] ** 2 + state.vel[1] ** 2)
-        gamma = math.atan2(state.vel[2], max(vh, 0.1))
-        alpha = state.pitch - gamma
-
-        # FIX 2: CL peaks at STALL_ALPHA then drops — no free lift at high AoA
+        # --- aerodynamics: CL peaks at STALL_ALPHA then drops smoothly ---
         if alpha <= self.STALL_ALPHA:
             CL = 0.4 + 4.0 * alpha + 1.2 * state.flap_pos
         else:
             excess  = alpha - self.STALL_ALPHA
             CL_peak = 0.4 + 4.0 * self.STALL_ALPHA + 1.2 * state.flap_pos
-            CL      = CL_peak * max(0.0, 1.0 - 2.5 * excess)
+            # Gentler drop — 1.2× excess (was 2.0×) so stall is recoverable
+            CL = CL_peak * max(0.0, 1.0 - 1.2 * excess)
         CL = float(np.clip(CL, -0.2, 2.2))
 
-        # Drag uses CL² induced term (physically correct) + higher CD0 so that
-        # cruise requires ~30-35% throttle rather than ~5% (which made the tanh
-        # output centre of 50% wildly wrong, preventing throttle from being learned).
-        CD = 0.08 + 0.06 * CL ** 2 + 0.04 * state.flap_pos
+        CD = 0.135 + 0.06 * CL ** 2 + 0.04 * state.flap_pos
         if alpha > self.STALL_ALPHA:
-            CD += 0.8 * (alpha - self.STALL_ALPHA)
+            # Increased drag in stall — slows aircraft, aids recovery
+            CD += 1.2 * (alpha - self.STALL_ALPHA)
 
         F_lift   = q * self.WING_AREA * CL
         F_drag   = q * self.WING_AREA * CD
@@ -169,12 +207,6 @@ class AircraftPhysics:
         tz =  sp      * F_thrust
 
         cr, sr = math.cos(state.roll), math.sin(state.roll)
-        # Lift is in the wind frame (perpendicular to velocity).
-        # Rolling tilts it laterally; pitch does NOT reduce its magnitude —
-        # that is already captured by the AoA→CL calculation.
-        # The old cp (cos pitch) factor halved lz at 60° pitch, starving the
-        # plane of lift exactly when it was climbing or in unusual attitudes.
-        # cp belongs only on thrust (body-frame force), not on lift.
         lx =  sr * F_lift
         ly =  0.0
         lz =  cr * F_lift
@@ -184,16 +216,11 @@ class AircraftPhysics:
 
         gz = -self.G * self.MASS
 
-        # --- sideslip damping (keel / vertical fin weathervane effect) ---
-        # Keeps velocity direction aligned with heading.
-        # Physically: F_side = q * S * CY * beta  where beta = v_lat / v
-        #           = (q/v) * S * CY * v_lat
-        # Must use q/v (not q) — using q directly gave 183 N from a tiny
-        # misalignment, braking the plane to 0 horizontal speed in 2 steps.
+        # --- sideslip damping (keel / weathervane effect — stronger) ---
         lat_x =  math.cos(state.yaw)
         lat_y =  math.sin(state.yaw)
         v_lat = state.vel[0] * lat_x + state.vel[1] * lat_y
-        F_keel = -(q / max(v_act, self.MIN_SPEED)) * self.WING_AREA * 0.2 * v_lat
+        F_keel = -(q / max(v_act, self.MIN_SPEED)) * self.WING_AREA * 0.5 * v_lat
         kx = F_keel * lat_x
         ky = F_keel * lat_y
 
@@ -202,10 +229,6 @@ class AircraftPhysics:
         az = (tz + lz + dz + gz) / self.MASS
 
         state.vel = state.vel + np.array([ax, ay, az]) * dt
-
-        # No velocity floor on state.vel — division-by-zero is already handled:
-        #   q uses  max(norm, MIN_SPEED),  drag uses  +1e-6,  gamma uses  max(vh, 0.1).
-        # Rescaling vel to MIN_SPEED was inflating upward drift into a climb.
         state.pos = state.pos + state.vel * dt
 
         return state

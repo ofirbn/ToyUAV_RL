@@ -1,0 +1,74 @@
+The current aircraft renderer looks like a butterfly/insect shape instead of a believable fixed-wing UAV.
+
+Fix the aircraft geometry in the pygame renderer.
+
+Requirements:
+
+1. Wings
+- Wings must be straight perpendicular rectangular wings.
+- Do NOT use swept triangles or curved wing shapes.
+- Main wing should look like a long narrow rectangle crossing the fuselage at 90 degrees.
+- Tailplane should also be a smaller perpendicular rectangle.
+
+2. Fuselage
+- Long thin fuselage.
+- Nose forward.
+- Tail aft.
+- Use a clean center body line.
+
+3. Vertical stabilizer
+- Add a proper vertical tail fin.
+- Small vertical rectangle above tail.
+
+4. Aircraft proportions
+Use realistic UAV proportions:
+- wingspan much larger than fuselage width
+- slender body
+- moderate tail size
+
+5. Rendering style
+Keep:
+- simple pygame primitive rendering
+- pseudo-3D projection
+- wireframe or filled primitive style
+
+Avoid:
+- butterfly silhouette
+- triangular wing blobs
+- insect-like geometry
+- delta-wing appearance
+
+6. Geometry implementation
+Represent aircraft with explicit local-space vertices:
+
+Example concept:
+- fuselage = long thin rectangle/line
+- main wings = perpendicular rectangle
+- tailplane = smaller perpendicular rectangle
+- vertical fin = upright rectangle
+
+Then rotate/project into world space.
+
+7. Camera
+Improve camera angle slightly:
+- behind and above aircraft
+- clearly show wingspan
+- avoid top-down flattening
+
+8. Add optional debug wireframe mode
+config.txt:
+wireframe=true
+
+9. Add aircraft attitude visualization
+- slight pitch visualization
+- slight bank visualization
+- yaw direction obvious from fuselage
+
+10. Keep renderer lightweight
+Use pygame draw primitives only.
+No OpenGL required yet.
+
+After fixing:
+- run visualization
+- verify aircraft clearly resembles a fixed-wing UAV from multiple headings
+- ensure wings are visually perpendicular rectangular surfaces.

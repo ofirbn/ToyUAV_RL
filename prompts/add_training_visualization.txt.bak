@@ -1,0 +1,75 @@
+Add live visualization during PPO training.
+
+IMPORTANT:
+Do NOT let renderer control the env.
+Do NOT let renderer call env.step().
+Do NOT let renderer call model.predict().
+Do NOT share the env object between renderer and PPO.
+
+Correct architecture:
+
+TRAIN LOOP OWNS:
+- env.step()
+- model.learn()
+- rollout generation
+
+Renderer is READ-ONLY:
+- receives copied aircraft state
+- receives copied mission state
+- only visualizes
+
+Implementation strategy:
+- create shared_state.py
+- store latest aircraft state in a lightweight dict/dataclass
+- trainer updates shared_state every N simulation steps
+- pygame renderer reads shared_state only
+- renderer never mutates env
+
+Example shared state:
+{
+    "position": [x,y,z],
+    "velocity": [vx,vy,vz],
+    "attitude": [roll,pitch,yaw],
+    "mode": current_mode,
+    "reward": latest_reward,
+    "waypoint": [x,y,z]
+}
+
+Visualization requirements:
+- pygame window opens immediately
+- renderer runs at ~60 FPS
+- training continues in background
+- renderer shows current live aircraft state
+- renderer shows current mode
+- renderer shows waypoint/runway
+
+Implementation:
+- use ONE background training thread only
+- NO render thread
+- main thread owns pygame
+- training thread updates shared_state
+- use thread lock around shared_state updates
+
+Important:
+Do NOT run PPO learn() forever in one blocking call.
+
+Instead:
+while training:
+    model.learn(total_timesteps=small_chunk, reset_num_timesteps=False)
+
+This allows renderer responsiveness.
+
+Use chunk sizes like:
+256
+512
+1024
+
+Renderer should continue smoothly while PPO trains.
+
+Avoid:
+- tensor sharing errors
+- env shape corruption
+- simultaneous predict/learn
+- renderer calling model.predict()
+
+Renderer visualizes trainer state only.

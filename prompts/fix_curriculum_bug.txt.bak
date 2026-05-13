@@ -1,0 +1,146 @@
+The stabilize controller is now clearly good enough.
+
+Current metrics:
+- success = 100%
+- crash = 0%
+- stall = 0%
+
+Visual behavior:
+- smooth
+- stable
+- low control activity
+- no violent oscillation
+- no saturation
+
+Yet curriculum remains locked due to:
+CONTROL_OSCILLATION_TOO_HIGH
+
+This indicates the oscillation metric or unlock logic is now incorrect.
+
+============================================================
+LIKELY BUGS
+============================================================
+
+Possible causes:
+1. oscillation metric accumulates forever
+2. threshold too strict
+3. measuring raw PPO outputs instead of smoothed actuator outputs
+4. tiny micro-corrections counted as oscillation
+5. unlock logic bug
+
+============================================================
+REQUIRED FIXES
+============================================================
+
+1. Measure oscillation on FINAL ACTUATOR OUTPUTS
+NOT raw PPO actions.
+
+Use:
+actual_surface_deflections
+
+============================================================
+2. USE WINDOWED RMS METRIC
+============================================================
+
+Do NOT accumulate forever.
+
+Use rolling window:
+- last N seconds
+- or last N steps
+
+Example:
+oscillation =
+RMS(d(action)/dt)
+
+over recent history only.
+
+============================================================
+3. ADD DECAY
+============================================================
+
+Old oscillation should fade out.
+
+Example:
+oscillation_metric *= 0.99
+
+============================================================
+4. IGNORE MICRO-CORRECTIONS
+============================================================
+
+Tiny corrections are NORMAL.
+
+Add deadzone:
+if abs(delta) < small_threshold:
+    delta = 0
+
+============================================================
+5. RELAX THRESHOLD
+============================================================
+
+Current threshold is clearly too strict.
+
+The aircraft is already visibly stable.
+
+Do NOT require perfectly frozen controls.
+
+============================================================
+6. ADD DEBUG DISPLAY
+============================================================
+
+Display:
+- current oscillation metric
+- threshold
+- rolling window RMS
+- actuator delta RMS
+
+============================================================
+7. FORCE CURRICULUM PROGRESSION
+============================================================
+
+Current stabilize behavior is sufficient.
+
+Immediately unlock:
+ALTITUDE_HOLD
+
+Do not continue stabilize indefinitely.
+
+============================================================
+8. ADD MAX PHASE LIMIT
+============================================================
+
+If:
+phase_steps > max_phase_steps
+
+force unlock.
+
+Suggested:
+max stabilize steps:
+2M
+
+============================================================
+9. IMPORTANT
+============================================================
+
+Real aircraft autopilots ALWAYS make:
+- tiny corrections
+- trim changes
+- small stabilization inputs
+
+The unlock metric must detect:
+harmful oscillation
+
+NOT:
+normal stabilized flight corrections.
+
+============================================================
+10. TARGET
+============================================================
+
+The current aircraft is already:
+- aerodynamically stable
+- non-stalling
+- non-crashing
+- smooth enough
+
+That is sufficient to begin:
+ALTITUDE_HOLD training.

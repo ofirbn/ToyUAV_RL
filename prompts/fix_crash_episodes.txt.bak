@@ -1,0 +1,53 @@
+Current stabilize training now appears fundamentally healthy.
+
+The aircraft:
+- flies stably
+- avoids stalls
+- maintains airspeed
+- uses moderate controls
+- visually behaves realistically
+
+The remaining issue is:
+occasional crash episodes (~11%).
+
+This is now a robustness/generalization problem,
+not a basic flight-stability problem.
+
+============================================================
+NEXT IMPROVEMENTS
+============================================================
+
+1. Add crash diagnostics
+Save replay/telemetry for crash episodes:
+- trajectory
+- controls
+- airspeed
+- AoA
+- roll/pitch/yaw
+- reward breakdown
+
+2. Add crash classification:
+STALL
+SPIRAL
+ENERGY_LOSS
+OVERBANK
+OSCILLATION
+GROUND_IMPACT
+
+3. Slightly reduce roll aggressiveness further.
+Current aileron still somewhat high for stabilize.
+
+4. Slightly increase actuator smoothing again.
+
+5. Add easier spawn distributions early in stabilize curriculum.
+
+6. Gradually increase disturbance/randomization over time.
+
+7. Allow curriculum progression at:
+crash_rate <= 10–12%
+
+Do not overtrain stabilize forever.
+
+The aircraft is already fundamentally capable of stable flight.
+
+8. PPO metrics telemetry still needs fixing.

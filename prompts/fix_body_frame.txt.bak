@@ -1,0 +1,134 @@
+The latest stabilize screenshot reveals the core remaining issue:
+
+The renderer/body-frame transform is STILL fundamentally wrong.
+
+============================================================
+EVIDENCE
+============================================================
+
+Telemetry:
+roll ≈ +1°
+pitch ≈ 0°
+
+But aircraft visually appears:
+- nearly vertical
+- edge-on
+- wings not horizontal
+
+This is impossible if body-frame conventions were correct.
+
+============================================================
+CONCLUSION
+============================================================
+
+The renderer coordinate system and/or aircraft local geometry axes are incorrect.
+
+Possible causes:
+- wing geometry defined in wrong plane
+- local axes swapped
+- roll applied around wrong axis
+- incorrect Euler order
+- handedness mismatch
+- projection matrix issue
+
+============================================================
+STOP FOCUSING ON RL FOR NOW
+============================================================
+
+Flight dynamics now appear substantially healthier:
+- success = 100%
+- crash = 0%
+- stall = 0%
+- controls moderate
+
+The MAIN remaining issue is:
+body-frame/render transform correctness.
+
+============================================================
+REQUIRED FIX
+============================================================
+
+Implement a strict aerospace coordinate convention:
+
+Aircraft local axes:
+X = forward
+Y = right wing
+Z = up
+
+Main wings:
+extend along local Y axis.
+
+Fuselage:
+extend along local X axis.
+
+Vertical stabilizer:
+extend along local Z axis.
+
+============================================================
+ROTATION ORDER
+============================================================
+
+Use:
+yaw → pitch → roll
+
+Verify carefully.
+
+============================================================
+DEBUG VISUALIZATION
+============================================================
+
+Render body axes directly:
+
+RED = forward X
+GREEN = right wing Y
+BLUE = up Z
+
+Draw:
+- body-frame axes
+- wing normal
+- forward vector
+
+============================================================
+EXPECTED RESULT
+============================================================
+
+When:
+roll = 0°
+pitch = 0°
+
+Aircraft MUST visually appear:
+- level
+- horizontal
+- wings flat
+
+NOT vertical.
+
+============================================================
+ADD RENDERER TEST MODE
+============================================================
+
+Implement renderer debug mode:
+
+- freeze physics
+- manually set:
+    roll
+    pitch
+    yaw
+
+Keyboard:
+Q/E = roll
+W/S = pitch
+A/D = yaw
+
+This allows visual verification independent of PPO.
+
+============================================================
+ONLY AFTER THIS IS FIXED
+============================================================
+
+Then resume:
+- curriculum progression
+- oscillation tuning
+- RL refinement
+
+Otherwise training/debugging remains misleading.

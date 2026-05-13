@@ -1,0 +1,381 @@
+You are working in my Python project ToyUAV_RL.
+
+Goal:
+Build a modular RL fixed-wing UAV simulator with:
+- multi-mode autonomous flight
+- mission/waypoint system
+- PPO reinforcement learning
+- 3D visualization
+- fixed-wing aircraft dynamics
+- runway approach and landing
+- clean architecture
+- Windows/PyCharm compatibility
+
+CRITICAL REQUIREMENTS:
+- Do NOT use threading.
+- Do NOT share the same env between training and rendering.
+- Do NOT call PPO learn() inside the render loop.
+- Training must be headless.
+- Visualization must load an already-trained model.
+- Pygame window must open immediately in visualize mode.
+- Prefer simple working implementations over broken ambitious ones.
+
+============================================================
+ARCHITECTURE
+============================================================
+
+Create this structure:
+
+ToyUAV_RL/
+│
+├── main.py
+├── requirements.txt
+├── train.py
+├── visualize.py
+│
+├── envs/
+│   └── fixed_wing_env.py
+│
+├── sim/
+│   ├── aircraft_dynamics.py
+│   ├── flight_modes.py
+│   ├── mission_manager.py
+│   └── rewards.py
+│
+├── render/
+│   └── pygame_renderer.py
+│
+├── models/
+│
+└── missions/
+    └── demo_mission.json
+
+============================================================
+MISSION SYSTEM
+============================================================
+
+Implement mission-based autonomous flight.
+
+The user should define missions using JSON.
+
+Example mission JSON:
+
+{
+  "mission": [
+    {
+      "type": "takeoff"
+    },
+    {
+      "type": "waypoint",
+      "x": 0,
+      "y": 120,
+      "z": 40
+    },
+    {
+      "type": "waypoint",
+      "x": 80,
+      "y": 220,
+      "z": 55
+    },
+    {
+      "type": "loiter",
+      "x": 120,
+      "y": 260,
+      "z": 60,
+      "radius": 40
+    },
+    {
+      "type": "approach",
+      "runway_x": 0,
+      "runway_y": 0,
+      "heading": 180
+    },
+    {
+      "type": "landing",
+      "runway_x": 0,
+      "runway_y": 0,
+      "heading": 180
+    }
+  ]
+}
+
+Implement MissionManager:
+- loads mission JSON
+- tracks current mission segment
+- advances to next segment when close enough
+- exposes current target info
+
+Target info should include:
+- target position
+- target heading
+- target altitude
+- target radius (if loiter)
+- current mode
+
+============================================================
+FLIGHT MODES
+============================================================
+
+Implement enum/constants:
+
+0 STABILIZE
+1 ALTITUDE_HOLD
+2 HEADING_HOLD
+3 WAYPOINT
+4 LOITER
+5 APPROACH
+6 LANDING
+7 RECOVERY
+
+Each mode should have:
+- dedicated reward shaping
+- dedicated target logic
+
+============================================================
+OBSERVATION SPACE
+============================================================
+
+Observation should include:
+
+Aircraft state:
+- x
+- y
+- z
+- vx
+- vy
+- vz
+- roll
+- pitch
+- yaw
+- p
+- q
+- r
+- airspeed
+
+Mission-relative state:
+- target vector = target_position - aircraft_position
+- target distance
+- target heading error
+- target altitude error
+
+Mode:
+- one-hot encoded flight mode
+
+Observation should NOT depend on absolute memorized coordinates only.
+
+============================================================
+ACTION SPACE
+============================================================
+
+Continuous actions:
+- elevator
+- aileron
+- rudder
+- throttle
+
+============================================================
+AIRCRAFT DYNAMICS
+============================================================
+
+Implement simplified but believable fixed-wing dynamics.
+
+Requirements:
+- fixed-wing must maintain forward motion
+- throttle affects forward acceleration
+- elevator affects pitch/climb
+- aileron affects roll
+- rudder affects yaw
+- include:
+    gravity
+    drag
+    basic lift approximation
+- include stall behavior:
+    if airspeed too low:
+        reduced lift
+        instability penalty
+- include crash detection
+- include ground collision
+- include runway touchdown detection
+
+Keep physics simple but coherent.
+
+Do NOT implement drone/quadcopter physics.
+
+============================================================
+REWARD SYSTEM
+============================================================
+
+Implement rewards per mode.
+
+STABILIZE:
++ level attitude
++ low angular rates
+- oscillation
+
+ALTITUDE_HOLD:
++ altitude tracking
+- vertical oscillation
+
+HEADING_HOLD:
++ heading tracking
+- excessive bank angle
+
+WAYPOINT:
++ progress toward waypoint
+- path deviation
+
+LOITER:
++ maintain orbit radius
++ maintain altitude
+
+APPROACH:
++ runway centerline alignment
++ glide slope tracking
+- high sink rate
+
+LANDING:
++ touchdown near runway center
++ low sink rate
++ low lateral velocity
+- crash
+- bounce
+
+RECOVERY:
++ restore safe airspeed
++ restore level flight
++ recover from stall
+
+============================================================
+RL TRAINING
+============================================================
+
+Use:
+- Stable-Baselines3 PPO
+
+Training must be HEADLESS.
+
+train.py:
+- creates train_env
+- loads mission
+- trains PPO
+- saves:
+  models/fixed_wing_multimode_ppo.zip
+
+Defaults:
+learning_rate=3e-4
+gamma=0.99
+n_steps=2048
+batch_size=64
+
+CLI:
+python main.py train --timesteps 300000
+
+============================================================
+VISUALIZATION
+============================================================
+
+visualize.py:
+- loads trained PPO model
+- creates SEPARATE render_env
+- opens pygame immediately
+- runs inference only
+
+Render:
+- 3D-ish perspective
+- horizon
+- sky/ground
+- ground grid
+- runway
+- fixed-wing aircraft geometry:
+    fuselage
+    wings
+    tail
+    vertical fin
+- waypoint markers
+- loiter circle
+- glide path
+- runway centerline
+
+Camera:
+- cinematic third-person
+OR
+- chase camera behind aircraft
+
+HUD:
+- mode
+- altitude
+- airspeed
+- heading
+- reward
+- waypoint distance
+- mission stage
+
+Keyboard controls:
+1 STABILIZE
+2 ALTITUDE_HOLD
+3 HEADING_HOLD
+4 WAYPOINT
+5 LOITER
+6 APPROACH
+7 LANDING
+8 RECOVERY
+
+R reset
+ESC quit
+
+============================================================
+MAIN ENTRYPOINT
+============================================================
+
+main.py should support:
+
+python main.py train --timesteps 300000
+
+python main.py visualize
+
+python main.py demo
+
+============================================================
+REQUIREMENTS.TXT
+============================================================
+
+stable-baselines3
+gymnasium
+pygame
+numpy
+torch
+
+============================================================
+QUALITY REQUIREMENTS
+============================================================
+
+- Must run on Windows PowerShell and PyCharm.
+- Avoid pygame freezing.
+- Avoid tensor shape errors.
+- Avoid threading race conditions.
+- Avoid PPO learn()/predict() concurrency issues.
+- Add comments where useful.
+- Keep implementation clean and modular.
+- Prefer working code over placeholders.
+- If needed, simplify physics before adding complexity.
+- After implementation, run quick syntax/import checks if possible.
+
+============================================================
+IMPLEMENTATION STRATEGY
+============================================================
+
+Implement incrementally:
+
+1. aircraft dynamics
+2. mission system
+3. env
+4. rewards
+5. PPO training
+6. renderer
+7. visualization
+8. keyboard mode switching
+
+Start by inspecting current files, then refactor into the structure above.
+
+Do not stop for questions unless absolutely blocked.
+Prefer making reasonable assumptions and producing runnable code.

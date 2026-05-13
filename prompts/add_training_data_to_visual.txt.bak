@@ -1,0 +1,189 @@
+Add a full real-time RL telemetry and visualization dashboard.
+
+The visualization should NOT only render the aircraft.
+
+It should also visualize:
+- current training objective
+- current mission target
+- current reward
+- reward breakdown
+- PPO training statistics
+- convergence indicators
+- flight state
+- mission progress
+- policy behavior
+
+============================================================
+REAL-TIME TRAINING TELEMETRY
+============================================================
+
+Display live PPO metrics:
+
+- total timesteps
+- episode number
+- episode reward
+- moving average reward
+- best reward
+- current learning rate
+- policy loss
+- value loss
+- entropy
+- approx_kl
+- explained_variance
+- FPS
+- training iteration
+- success rate
+- crash rate
+- landing success rate
+- waypoint completion rate
+
+Render these as:
+- HUD text
+- scrolling graphs
+- mini dashboards
+- color-coded indicators
+
+============================================================
+FLIGHT TELEMETRY HUD
+============================================================
+
+Display:
+
+- mode
+- airspeed
+- altitude
+- heading
+- roll
+- pitch
+- yaw
+- vertical speed
+- throttle
+- control surface deflections
+- distance to waypoint
+- glide slope error
+- runway alignment error
+- angle of attack approximation
+- stall warning
+- g-load approximation
+
+============================================================
+MISSION VISUALIZATION
+============================================================
+
+Render:
+- waypoint markers
+- current target
+- loiter orbit
+- runway
+- glide slope line
+- trajectory trail/history
+- predicted velocity vector
+- target vector
+- path history
+
+============================================================
+TRAINING GOAL VISUALIZATION
+============================================================
+
+Show visually:
+- what the agent is currently trying to optimize
+- active reward terms
+- current reward breakdown
+
+Example:
+Reward Breakdown:
++ waypoint_progress: +1.23
+- excessive_bank: -0.12
+- sink_rate: -0.45
++ runway_alignment: +0.88
+
+============================================================
+CONVERGENCE VISUALIZATION
+============================================================
+
+Add:
+- scrolling reward graph
+- moving average reward graph
+- crash frequency graph
+- success frequency graph
+- PPO loss graphs
+
+Use simple pygame-rendered line graphs.
+
+============================================================
+EVENT SYSTEM
+============================================================
+
+Display temporary events:
+- STALL WARNING
+- GOOD LANDING
+- CRASH
+- WAYPOINT REACHED
+- MODE SWITCH
+- RECOVERY ACTIVATED
+
+============================================================
+CAMERA MODES
+============================================================
+
+Keyboard:
+F1 = cinematic chase camera
+F2 = side view
+F3 = top-down tactical view
+F4 = cockpit-ish forward view
+
+============================================================
+TRAINING ARCHITECTURE
+============================================================
+
+IMPORTANT:
+Renderer remains READ-ONLY.
+
+Trainer thread:
+- owns PPO
+- owns env
+- updates shared telemetry state
+
+Renderer:
+- visualizes shared telemetry only
+- never mutates env
+- never calls env.step()
+- never calls model.predict()
+
+============================================================
+VISUAL STYLE
+============================================================
+
+Style:
+- dark aerospace-style UI
+- horizon
+- artificial horizon indicator
+- green HUD symbology
+- modern flight-test aesthetic
+- smooth 60 FPS rendering
+
+============================================================
+PERFORMANCE
+============================================================
+
+Keep renderer lightweight:
+- avoid matplotlib
+- use pygame primitive drawing
+- use bounded telemetry history buffers
+
+============================================================
+IMPLEMENTATION ORDER
+============================================================
+
+Implement incrementally:
+
+1. shared telemetry state
+2. flight HUD
+3. reward breakdown
+4. training metrics
+5. scrolling graphs
+6. mission overlays
+7. camera modes
+8. event system
+
+Prefer working visualization over overengineered abstractions.

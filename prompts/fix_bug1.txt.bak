@@ -1,0 +1,66 @@
+Bug: during STABILIZE training, the environment keeps switching between STABILIZE and RECOVERY.
+
+Fix mode switching logic.
+
+Requirements:
+
+1. In curriculum_phase=stabilize:
+   - force mode = STABILIZE
+   - do NOT auto-switch to RECOVERY
+   - do NOT switch mission segment
+   - do NOT alternate modes
+
+2. Recovery should only activate when:
+   - curriculum_phase=recovery
+   OR
+   - curriculum_phase=mixed AND emergency_recovery_enabled=true
+
+3. Add config option:
+emergency_recovery_enabled=false
+
+Default false for:
+- stabilize
+- cruise
+- altitude
+- heading
+- waypoint
+- loiter
+- approach
+- landing
+
+Default true only for:
+- recovery
+- mixed
+
+4. In stabilize mode, instead of switching to RECOVERY on stall / bad attitude:
+   - keep mode STABILIZE
+   - apply stall penalty
+   - apply envelope penalty
+   - terminate episode if unrecoverable
+
+5. Add telemetry:
+- curriculum_phase
+- commanded_mode
+- active_mode
+- recovery_triggered
+- recovery_reason
+
+6. Add debug log when mode changes:
+MODE CHANGE: old_mode -> new_mode reason=...
+
+7. Add assertion:
+if curriculum_phase == "stabilize":
+    assert active_mode == STABILIZE
+
+8. Visualization:
+Show both:
+- Curriculum Phase: STABILIZE
+- Active Mode: STABILIZE
+
+Do not show RECOVERY during stabilize training.
+
+Goal:
+STABILIZE phase should train one clean behavior only:
+stable level flight.
+
+No automatic switching to recovery during stabilize.

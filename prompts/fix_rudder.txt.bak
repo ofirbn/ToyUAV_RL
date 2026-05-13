@@ -1,0 +1,146 @@
+The simulator has improved dramatically.
+
+Loiter behavior now fundamentally works:
+- sustained turning
+- stable flight
+- successful orbit tracking
+- no stalls/crashes
+
+However, the aircraft still turns unrealistically.
+
+============================================================
+CURRENT PROBLEM
+============================================================
+
+The aircraft still relies too heavily on:
+- rudder
+- control saturation
+- yaw-driven turning
+
+instead of:
+- coordinated banked turns.
+
+Evidence:
+- rudder saturation
+- aileron saturation
+- very low reported bank angle during significant turning
+- distorted orbit shape
+
+============================================================
+REQUIRED IMPROVEMENT
+============================================================
+
+Implement more realistic coordinated-turn physics.
+
+============================================================
+1. TURNING SHOULD COME FROM BANK
+============================================================
+
+Primary turning mechanism should be:
+bank angle tilting lift vector.
+
+Aircraft should NOT turn mainly from rudder yaw.
+
+============================================================
+2. REDUCE RUDDER AUTHORITY FURTHER
+============================================================
+
+Rudder should:
+- coordinate turns
+- damp sideslip
+
+NOT:
+- act as primary steering mechanism.
+
+============================================================
+3. INCREASE BANK REQUIREMENT FOR TURNING
+============================================================
+
+To sustain loiter orbit:
+aircraft should require realistic bank angle.
+
+Current:
+significant turning with near-zero roll is unrealistic.
+
+============================================================
+4. ADD SIDESLIP PENALTY
+============================================================
+
+Penalize:
+- yaw without bank
+- skidding turns
+- excessive rudder steering
+
+Reward:
+coordinated turns.
+
+============================================================
+5. ADD COORDINATED TURN REWARD
+============================================================
+
+Reward:
+- proper bank-to-turn relationship
+- smooth orbit geometry
+- stable angular velocity
+
+============================================================
+6. REDUCE CONTROL SATURATION
+============================================================
+
+Current loiter still uses:
+- full aileron
+- full rudder
+
+This is unrealistic.
+
+Increase:
+- actuator smoothing
+- saturation penalties
+
+============================================================
+7. ADD TARGET LOITER SPEED
+============================================================
+
+Current loiter speed too low:
+~9.8 m/s
+
+Increase desired loiter cruise speed.
+
+Target:
+- healthier energy state
+- lower AoA
+- smoother orbit
+
+============================================================
+8. IMPROVE ORBIT GUIDANCE
+============================================================
+
+Current orbit shape still distorted.
+
+Implement smoother orbit interception:
+- tangential entry
+- predictive curvature
+- less aggressive corrections
+
+============================================================
+9. ADD TURN COORDINATION TELEMETRY
+============================================================
+
+Display:
+- lateral acceleration
+- turn rate
+- sideslip estimate
+- bank angle
+- coordinated-turn metric
+
+============================================================
+10. LONG-TERM GOAL
+============================================================
+
+Aircraft should loiter like:
+- ISR UAV
+- trainer aircraft
+- autopilot-controlled fixed-wing platform
+
+NOT:
+- skid-steered flying object.

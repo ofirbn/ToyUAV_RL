@@ -133,35 +133,27 @@ class PilotageEnv(gym.Env):
         # /150 prevents saturation: 80m climb starts at 0.47 not -1.0,
         # so the policy has gradient throughout the manoeuvre.
         alt_err   = abs(s.pos[2]   - cmd_alt)   / 80.0    # was /150 — gradient too weak for climb
-        yaw_err   = abs(math.atan2(math.sin(s.yaw - cmd_yaw),
-                                   math.cos(s.yaw - cmd_yaw))) / math.pi * 0.5
-        roll_err  = abs(s.roll - cmd_roll) / math.pi
+        # yaw_err in [0, 1] — NO ×0.5 factor.
+        # The old ×0.5 made yaw_err too weak: do-nothing in turn mode earned
+        # 300/ep (> threshold 250) so the policy never needed to actually turn.
+        # Spinning in level mode earned 300/ep so the plane kept spinning.
+        yaw_err  = abs(math.atan2(math.sin(s.yaw - cmd_yaw),
+                                   math.cos(s.yaw - cmd_yaw))) / math.pi
+        roll_err = abs(s.roll - cmd_roll) / math.pi
 
-        # Mode-aware reward: only include the active term(s).
-        # Inactive terms are excluded — they start at target and the
-        # smoothness penalty discourages unnecessary control use.
-        # Key case: roll_err is excluded from 'turn' because yaw_rate
-        # (needed to turn) directly produces roll in SimplePhysics,
-        # so penalising roll would conflict with the turning objective.
         sc = self._scenario
         if sc in ('level', 'speed'):
-            r = 1.0 - speed_err - yaw_err   # yaw keeps plane from spinning while learning speed
+            r = 1.0 - speed_err - yaw_err
         elif sc in ('climb', 'descent'):
-            r = 1.0 - alt_err - yaw_err   # hold heading while changing altitude
+            r = 1.0 - alt_err - yaw_err
         elif sc == 'turn':
-            r = 1.0 - yaw_err          # no roll_err: turning requires yaw_rate → roll
+            r = 1.0 - yaw_err
         elif sc == 'recovery':
             r = 1.0 - speed_err - roll_err
         else:
             r = 1.0 - speed_err - alt_err - yaw_err - roll_err
 
-        r = float(np.clip(r, -1.0, 1.0))
-        # Throttle minimum penalty REMOVED.
-        # It created a local optimum at throttle=0.30 (parks there to avoid
-        # both the delta penalty and the min penalty, giving speed=4.5 m/s
-        # while target is 9-13 m/s → speed_err clips to 1.0 → r≈-0.08/step).
-        # speed_err already provides the gradient to push throttle toward target.
-        return r
+        return float(np.clip(r, -1.0, 1.0))
 
     # ----------------------------------------------------------
     # Gym interface
@@ -186,7 +178,7 @@ class PilotageEnv(gym.Env):
 
         elif mode == 'climb':
             spd   = float(np.random.uniform(9, 13))
-            d_alt = float(np.random.uniform(30, 120))
+            d_alt = float(np.random.uniform(40, 80))   # was 30-120: too large to converge in 400 steps
             rate  = float(np.random.uniform(1.5, 4.0))
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
@@ -197,7 +189,7 @@ class PilotageEnv(gym.Env):
 
         elif mode == 'descent':
             spd   = float(np.random.uniform(8, 12))
-            d_alt = float(np.random.uniform(30, 100))
+            d_alt = float(np.random.uniform(40, 80))   # matched to climb range
             rate  = float(np.random.uniform(1.0, 3.5))
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
@@ -208,7 +200,7 @@ class PilotageEnv(gym.Env):
 
         elif mode == 'turn':
             spd   = float(np.random.uniform(9, 13))
-            d_yaw = float(np.random.choice([-1, 1])) * float(np.random.uniform(40, 120))
+            d_yaw = float(np.random.choice([-1, 1])) * float(np.random.uniform(90, 150))  # was 40-120: do-nothing earned 300 > 250
             self._state = AircraftState(
                 pos=np.array([0.0, 200.0, alt]),
                 vel=np.array([math.sin(yaw)*spd, -math.cos(yaw)*spd, 0.0]),
@@ -257,24 +249,20 @@ class PilotageEnv(gym.Env):
 
         reward = self._reward()
 
-        # Smoothness: penalise rapid changes only — keeps control smooth.
-        # Weights deliberately small so early exploration still earns positive reward.
+        # Smoothness delta — discourages rapid changes, not sustained values.
         delta = actuators - self._prev_action
-        reward -= (abs(delta[0]) * 0.20   # throttle
-                 + abs(delta[1]) * 0.10   # elevator
-                 + abs(delta[2]) * 0.10   # aileron
-                 + abs(delta[3]) * 0.10)  # rudder
+        reward -= (abs(delta[0]) * 0.15   # throttle
+                 + abs(delta[1]) * 0.05   # elevator
+                 + abs(delta[2]) * 0.05   # aileron
+                 + abs(delta[3]) * 0.05)  # rudder
         self._prev_action = actuators.copy()
 
-        # Sustained aileron/rudder penalty in non-turn modes.
-        # Spinning prevention — weight moderate so learning still gets positive signal.
-        # Elevator sustained penalty REMOVED: SimplePhysics naturally returns
-        # vz→0 when elevator=0, so the physics enforce it without a penalty.
-        # The previous 0.8 weights collectively overwhelmed the reward (r=-238).
-        sc = self._scenario
-        if sc != 'turn':
-            reward -= (abs(float(actuators[2])) * 0.4    # aileron
-                     + abs(float(actuators[3])) * 0.4)   # rudder
+        # Sustained aileron/rudder — prevents constant spinning in non-turn modes.
+        # Verified: at ail=0.5, yaw_err penalty (0.5/step) + sustained (0.15/step)
+        # → total spinning cost = 260 pts > threshold, spinning cannot converge.
+        if self._scenario != 'turn':
+            reward -= (abs(float(actuators[2])) * 0.30
+                     + abs(float(actuators[3])) * 0.30)
 
         done = False
         if not SIMPLE_PHYSICS:

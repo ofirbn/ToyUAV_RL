@@ -1,0 +1,205 @@
+We have a PPO fixed-wing UAV RL simulator already training.
+
+Current result after 2.4M steps:
+mean_ep_reward ≈ +18
+crash ≈ 66%
+success ≈ 27%
+ep_len_mean ≈ 334
+
+Goal:
+Improve training robustness, convergence, and visual debugging.
+
+Implement the following upgrades:
+
+1. Curriculum learning
+Create training phases:
+- phase 1: stable cruise
+- phase 2: altitude hold
+- phase 3: heading hold
+- phase 4: waypoint follow
+- phase 5: loiter
+- phase 6: approach
+- phase 7: landing
+- phase 8: mixed mission
+
+Add config.txt options:
+curriculum=true
+curriculum_phase=mixed
+or:
+curriculum_phase=cruise / altitude / heading / waypoint / loiter / approach / landing / mixed
+
+Training should gradually increase difficulty:
+- easier initial positions
+- low wind/noise first
+- wider success thresholds first
+- later tighter thresholds
+
+2. Action smoothing
+Add previous action to env state.
+
+Penalize rapid control changes:
+
+action_delta = action - prev_action
+reward -= action_smooth_weight * norm(action_delta)
+
+Use default:
+action_smooth_weight = 0.03
+
+Also include previous action in observation.
+
+3. Stall model
+Add realistic stall behavior.
+
+If airspeed < stall_speed:
+- reduce lift
+- increase sink rate
+- add instability
+- add reward penalty
+
+Use:
+stall_speed = 6.0
+
+Reward penalty:
+reward -= 5.0 per step while stalled
+
+Expose stall_warning in telemetry.
+
+4. Flight envelope penalties
+Penalize:
+- excessive roll
+- excessive pitch
+- excessive yaw rate
+- excessive roll rate
+- excessive pitch rate
+- excessive sink rate
+
+Add reward terms and expose them in reward breakdown.
+
+5. Best model checkpointing
+Do not only save latest model.
+
+Track:
+- moving average reward
+- success rate
+- crash rate
+
+Save:
+models/latest.zip
+models/best_reward.zip
+models/best_success.zip
+
+Best success should be based on rolling success rate.
+
+6. Mode-specific metrics
+Track separately:
+- cruise_success_rate
+- altitude_hold_success_rate
+- heading_hold_success_rate
+- waypoint_success_rate
+- loiter_success_rate
+- approach_success_rate
+- landing_success_rate
+- recovery_success_rate
+- crash_rate
+- stall_rate
+
+Write them into telemetry.
+
+7. Reward breakdown
+Every env.step should produce info["reward_breakdown"] containing:
+- progress
+- altitude
+- heading
+- centerline
+- glideslope
+- landing
+- stall
+- envelope
+- action_smoothing
+- crash
+- success
+
+Renderer should display reward breakdown visually.
+
+8. Trajectory visualization
+Renderer should show:
+- last N aircraft positions
+- trajectory trail
+- velocity vector
+- target vector
+- glide slope line
+- waypoint marker
+- runway centerline
+- loiter circle when relevant
+
+Use bounded history buffer.
+
+9. Training dashboard
+During training visualization, show:
+- total timesteps
+- episode reward
+- moving average reward
+- success rate
+- crash rate
+- stall rate
+- current curriculum phase
+- current mode
+- airspeed
+- altitude
+- roll/pitch/yaw
+- current reward
+- reward breakdown
+- best reward so far
+- best success rate so far
+
+Add simple pygame scrolling graphs:
+- reward history
+- success rate
+- crash rate
+- stall rate
+
+10. Config file only
+Do not require CLI arguments.
+
+Read all settings from config.txt.
+
+Example config.txt:
+
+mode=train_visual
+timesteps=3000000
+mission=missions/demo_mission.json
+model=models/latest.zip
+curriculum=true
+curriculum_phase=mixed
+visualize_training=true
+save_every=100000
+action_smooth_weight=0.03
+stall_speed=6.0
+
+Supported modes:
+train
+visualize
+train_visual
+demo
+
+11. Critical architecture
+For train_visual:
+- main thread owns pygame renderer
+- background training thread owns PPO and env
+- renderer is read-only
+- renderer never calls env.step()
+- renderer never calls model.predict()
+- renderer reads shared telemetry snapshots only
+- protect shared telemetry with lock
+- avoid shared env corruption
+
+12. After implementation
+Run:
+python main.py
+
+Fix any import/syntax errors.
+Do not stop after creating files.
+Actually test the entry point.
+
+Do not ask me questions unless blocked.
+Prefer working simple implementation over complex broken code.
