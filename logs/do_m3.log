@@ -1,0 +1,78 @@
+Prompt: prompts\do_m3.txt 
+-------------------------------------------- 
+M3 is implemented. Summary below.
+
+## Files modified/added (exactly 3, no other touches)
+1. `controllers/mission_manager.py` — added `Expert.path`, threaded checkpoint path through both load sites, added `describe_routing()` (read-only diagnostic, no change to `get_active_expert`/`predict`).
+2. `visualize.py` — added opt-in `log_expert_switches` cfg flag; logs `[VIZ] Active expert for <MODE> → <path>` only when the active expert actually changes.
+3. `tools/print_routing.py` (new) — standalone diagnostic CLI, no env/training/pygame import.
+
+## Unified diffs
+(shown above via `git diff`)
+
+New file `tools/print_routing.py`:
+```python
+"""
+Diagnostic: print which policy each FlightMode routes to — the default
+checkpoint or a mode-specific expert — without running any simulation.
+
+Run via:  python tools/print_routing.py [--model models/latest.zip]
+                                         [--experts-dir models/experts]
+"""
+
+import argparse
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from controllers.mission_manager import MissionManager
+from sim.flight_modes import MODE_NAMES
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Print expert routing per FlightMode")
+    parser.add_argument("--model", default="models/latest.zip", help="Default policy checkpoint")
+    parser.add_argument("--experts-dir", default="models/experts", help="Per-mode expert checkpoints dir")
+    args = parser.parse_args()
+
+    mgr = MissionManager(default_model_path=args.model, experts_dir=args.experts_dir).load()
+    routing = mgr.describe_routing()
+
+    print(f"{'MODE':<12} {'SOURCE':<8} PATH")
+    for mode, info in routing.items():
+        path = info["path"] or "(none — random actions)"
+        print(f"{MODE_NAMES[mode]:<12} {info['source']:<8} {path}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Commands to test
+```bash
+# 1. Diagnostic — current state (no experts trained yet)
+venv/Scripts/python.exe tools/print_routing.py
+
+# 2. Diagnostic — with a mode-specific expert present (simulated; real M2 experts go in models/experts/<mode>.zip)
+mkdir -p models/experts && cp models/latest.zip models/experts/stabilize.zip
+venv/Scripts/python.exe tools/print_routing.py
+rm models/experts/stabilize.zip   # cleanup
+
+# 3. Runtime logging in visualize.py (opt-in, default off)
+# in config.txt add: log_expert_switches=true
+python main.py   # mode=visualize/demo per config.txt
+```
+
+## Expected output
+- Command 1: all 8 modes print `SOURCE=default`, `PATH=models/latest.zip`.
+- Command 2: `STABILIZE` prints `SOURCE=expert PATH=models/experts/stabilize.zip`; the other 7 modes still print `default`.
+- Command 3: with the flag off (default), visualize.py behaves exactly as before — no new prints. With it on, you get one `[VIZ] Active expert for <MODE> → <path>` line the first time each mode is hit and again only when the active path actually changes (e.g. switching to a mode that has a trained expert, or pressing 1-8 to override modes) — never on a free-running mode-to-mode switch where both sides use the same default path.
+
+## Rollback
+```bash
+git checkout -- controllers/mission_manager.py visualize.py
+rm tools/print_routing.py
+```
+
+No reward, training, dynamics, or transition code was touched; `models/experts/` was left empty as found (the test checkpoint copy was removed).

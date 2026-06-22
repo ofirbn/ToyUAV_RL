@@ -1,0 +1,28 @@
+Commit M3 first.
+
+Then proceed with M4A only: add mode-specific training support for APPROACH expert only.
+
+Goal:
+Train a PPO expert specifically for FlightMode.APPROACH and save it to:
+models/experts/approach.zip
+
+Requirements:
+- Do not change environment physics.
+- Do not change existing default train path.
+- Add a separate script or config path for training one expert mode.
+- Force/reset env into APPROACH mode for expert training.
+- Keep reward changes minimal and isolated.
+- Do not affect visualize/demo unless models/experts/approach.zip exists.
+- Do not train all modes yet.
+- Do not implement smooth transitions yet.
+- Add clear evaluation command for approach expert.
+
+Before editing, list exact files you intend to modify.
+
+After implementation, provide:
+1. files changed
+2. unified diffs
+3. exact train command
+4. exact eval/visualize command
+5. where checkpoint is saved
+6. rollback instructions

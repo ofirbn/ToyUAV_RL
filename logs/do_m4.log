@@ -1,0 +1,38 @@
+Prompt: prompts\do_m4.txt 
+-------------------------------------------- 
+## Summary
+
+**M3** committed as `fb13dd3`.
+
+**M4A** — both new files, smoke-tested end-to-end (ran 2048-timestep train + 5-episode eval, then deleted the throwaway checkpoint). Not yet committed — let me know if you want that done too.
+
+### 1. Files changed
+- `tools/train_expert_approach.py` (new)
+- `tools/eval_expert_approach.py` (new)
+
+No existing files touched. The env already hard-locks `FlightMode.APPROACH` on every reset when `curriculum_phase="approach"` (`sim/curriculum.py: get_locked_mode`), and `MissionManager` already auto-routes `APPROACH` to `models/experts/approach.zip` if present (from M3/earlier work) — so no env, reward, or mission-manager changes were needed.
+
+### 2. Unified diffs
+Shown above in full (both files are new, so diffs are the complete file contents against `/dev/null`).
+
+### 3. Train command
+```
+venv/Scripts/python.exe tools/train_expert_approach.py --timesteps 300000
+```
+Resumes automatically if `models/experts/approach.zip` already exists; use `--force-new` to restart from scratch.
+
+### 4. Eval command
+```
+venv/Scripts/python.exe tools/eval_expert_approach.py --episodes 50
+```
+Visualize/demo: `models/experts/approach.zip` is picked up automatically by `MissionManager` once it exists — no extra flag needed.
+
+### 5. Checkpoint location
+`models/experts/approach.zip`, plus `models/experts/approach_best_reward.zip`, `approach_best_success.zip`, `approach_latest.zip` (periodic/best snapshots, isolated from the default `models/latest.zip` path).
+
+### 6. Rollback
+```
+rm tools/train_expert_approach.py tools/eval_expert_approach.py
+rm -f models/experts/approach*.zip   # only if you also want to discard the trained expert
+```
+No tracked files were modified, so no `git checkout` is needed for rollback.

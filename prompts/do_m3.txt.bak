@@ -1,0 +1,23 @@
+Proceed with M3 only.
+
+Goal:
+Make expert routing observable and testable, without changing rewards, training, dynamics, or adding transitions.
+
+Requirements:
+- Keep default fallback behavior unchanged.
+- When a mode-specific expert exists, MissionManager must route that mode to it.
+- Add a small diagnostic command/script that prints which policy each FlightMode uses:
+  default vs expert checkpoint path.
+- Add optional runtime logging in visualize.py when the active expert changes.
+- Do not add smooth transitions.
+- Do not add mode-specific training scripts.
+- Do not change environment behavior.
+
+Before editing, list exact files to modify.
+
+After implementation, provide:
+1. files changed
+2. unified diffs
+3. commands to test
+4. expected output
+5. rollback instructions
