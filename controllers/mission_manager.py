@@ -24,8 +24,9 @@ from sim.flight_modes import FlightMode
 class Expert:
     """Wraps a loaded SB3 policy (or None) behind a uniform .predict()."""
 
-    def __init__(self, model=None):
+    def __init__(self, model=None, path: str = None):
         self.model = model
+        self.path  = path
 
     @property
     def loaded(self) -> bool:
@@ -79,7 +80,7 @@ class MissionManager:
             if os.path.exists(candidate + ".zip"):
                 try:
                     print(f"[MISSION] Loading default policy from {candidate}.zip")
-                    self._default_expert = Expert(PPO.load(candidate))
+                    self._default_expert = Expert(PPO.load(candidate), path=candidate + ".zip")
                     break
                 except Exception as e:
                     print(f"[MISSION] Could not load {candidate}: {e}")
@@ -101,7 +102,7 @@ class MissionManager:
                 continue
             try:
                 print(f"[MISSION] Loading expert for {mode.name} from {zip_path}")
-                self._experts[mode] = Expert(PPO.load(zip_path[:-4]))
+                self._experts[mode] = Expert(PPO.load(zip_path[:-4]), path=zip_path)
             except Exception as e:
                 print(f"[MISSION] Could not load expert {zip_path}: {e}")
 
@@ -116,3 +117,17 @@ class MissionManager:
 
     def predict(self, obs, flight_mode: FlightMode, deterministic: bool = True):
         return self.get_active_expert(flight_mode).predict(obs, deterministic=deterministic)
+
+    def describe_routing(self) -> dict:
+        """Diagnostic-only: report which policy each FlightMode currently
+        routes to, without affecting get_active_expert()/predict(). Returns
+        {mode: {"source": "expert"|"default", "path": str or None}}."""
+        default_path = self._default_expert.path
+        routing = {}
+        for mode in FlightMode:
+            expert = self._experts.get(mode)
+            if expert is not None:
+                routing[mode] = {"source": "expert", "path": expert.path}
+            else:
+                routing[mode] = {"source": "default", "path": default_path}
+        return routing

@@ -35,6 +35,7 @@ def run(cfg: dict = None, mission_path: str = None, use_model: bool = True):
 
     model_spec   = cfg.get("model", "models/latest.zip")
     mission_path = mission_path or cfg.get("mission", "missions/demo_mission.json")
+    log_expert_switches = cfg.get("log_expert_switches", "false").lower() == "true"
 
     pygame.init()
     W, H = 1600, 950
@@ -68,6 +69,8 @@ def run(cfg: dict = None, mission_path: str = None, use_model: bool = True):
     font = pygame.font.SysFont("Consolas", 18)
 
     print("[VIZ] Window open. Press 1-8 to switch modes, R to reset, ESC to quit.")
+
+    last_expert_path = None
 
     while True:
         for event in pygame.event.get():
@@ -112,6 +115,12 @@ def run(cfg: dict = None, mission_path: str = None, use_model: bool = True):
 
         if not done:
             if mission_mgr is not None:
+                if log_expert_switches:
+                    active_path = mission_mgr.get_active_expert(env.mode).path
+                    if active_path != last_expert_path:
+                        print(f"[VIZ] Active expert for {MODE_NAMES[env.mode]} → "
+                              f"{active_path or '(none — random actions)'}")
+                        last_expert_path = active_path
                 action, _ = mission_mgr.predict(obs, env.mode, deterministic=True)
             else:
                 action = env.action_space.sample()
