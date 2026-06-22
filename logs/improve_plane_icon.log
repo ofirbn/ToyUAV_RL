@@ -1,0 +1,17 @@
+Prompt: prompts\improve_plane_icon.txt 
+-------------------------------------------- 
+Syntax is clean. Here's a summary of all changes made:
+
+**`render/pygame_renderer.py`:**
+
+1. **Aircraft geometry** (`_draw_aircraft`, lines 481-563) — completely replaced the triangle-based butterfly shape with explicit rectangular surfaces:
+   - **Fuselage**: unchanged thick glowing line (nose to tail)
+   - **Main wings**: 4-vertex rectangle (`wll/wrl/wrt/wlt`) spanning ±45 units left/right, with a realistic chord (~9 units) perpendicular to the fuselage — no more swept triangles
+   - **Tailplane**: smaller 4-vertex rectangle (`hll/hrl/hrt/hlt`) at the tail, half-span 17 units
+   - **Vertical fin**: upright rectangle (`fbl/ftl/ftt/fbt`) rising 20 units above the tail in the Z direction, with gold border for visibility
+
+2. **Chase camera** (`_chase_offset`): `[0, 40, 12]` → `[0, 55, 22]` — further back and higher, giving a clearer off-axis view that shows the full wingspan without top-down flattening
+
+3. **Wireframe mode**: `_read_wireframe_cfg()` module function reads `config.txt` at init; when `wireframe=true`, wing/tail polygons render as outlines only
+
+**`config.txt`:** Added `wireframe=false` (change to `true` to enable debug wireframe mode)

@@ -1,0 +1,44 @@
+The loiter policy now survives and attempts coordinated turning, but the aircraft still cannot achieve demanded bank angles.
+
+Observed:
+- commanded bank frequently 30-35 deg
+- actual bank remains under ~10 deg
+- aileron near saturation
+- rudder heavily compensating
+- loiter path elongated and spiraling
+
+Tasks:
+
+1. Compute physically achievable loiter radius from:
+- current airspeed
+- realistic bank limits
+
+2. Verify that commanded loiter radius is achievable.
+
+3. If orbit radius too small:
+- increase target loiter radius moderately
+
+4. Increase roll authority further:
+- stronger aileron effectiveness
+OR
+- lower roll damping
+OR
+- reduced roll inertia
+
+5. Reduce excessive yaw-assisted turning:
+- slightly reduce rudder authority
+OR
+- increase sideslip penalty mildly
+
+6. Run validation:
+- measure achievable steady-state bank
+- measure minimum stable turn radius
+- run loiter evaluation
+
+Goal:
+- smooth circular orbit
+- reduced rudder dependence
+- stable coordinated banked turns
+- less spiral wandering
+
+Do NOT make controls twitchy or arcade-like.

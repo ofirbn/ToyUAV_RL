@@ -1,0 +1,32 @@
+Prompt: prompts\add_training_data_to_visual.txt 
+-------------------------------------------- 
+All five files are done and all tests pass. Here's what was built:
+
+---
+
+## What was implemented
+
+**5 files changed, implemented in order:**
+
+### `shared_state.py` — telemetry bus
+Added: `elevator/aileron/rudder`, `mission_seg/total`, `reward_breakdown`, `policy_loss/value_loss/entropy/approx_kl/explained_var/fps/training_iter`, `success/crash/landing_rate`, `best_reward`, `camera_mode`, `events` (auto-expiring), and 7 bounded history deques (`reward`, `mean_reward`, `crash`, `success`, `policy_loss`, `value_loss`, `trajectory`).
+
+### `sim/rewards.py` — breakdown returns
+All 8 reward functions now return `(float, dict)`. The dict has named terms like `{"progress": +0.3, "alt_penalty": -0.1, "smoothness": -0.05}` — each signed with its actual contribution.
+
+### `envs/fixed_wing_env.py` — info plumbing
+`step()` unpacks the reward tuple, adds `smoothness` to the breakdown dict, and includes `"reward_breakdown"` in the returned `info`.
+
+### `train.py` — enriched LiveCallback
+Extracts PPO logger metrics (`policy_gradient_loss`, `value_loss`, `entropy_loss`, `approx_kl`, `explained_variance`) after each rollout, tracks FPS, rolling success/crash/landing rates (last 100 episodes), pushes trajectory points every 4 steps, fires events (`CRASH`, `GOOD LANDING`, `WAYPOINT REACHED`, `STALL WARNING`, `MODE →`).
+
+### `render/pygame_renderer.py` — full dashboard (1600×950)
+
+| Panel | Contents |
+|---|---|
+| **Left 280px** | Training status, episode reward/mean/best, LR, PPO metrics with color coding (green/amber/red KL, explained variance bar), success/crash/landing bars, objective banner |
+| **Center 1040×670** | 3-D scene with trajectory color trail, velocity vector, mission overlays (waypoints, loiter, glide slope, runway centerline), aircraft, attitude indicator, event overlay, camera mode label |
+| **Right 280px** | Mode banner, full flight HUD (alt/speed/heading/pitch/roll/VSPD/G-load/AOA), stall warning flash, control surface bars (bipolar), navigation (dist/GS error/lateral error), reward breakdown with mini bars |
+| **Bottom 280px** | 4 scrolling line graphs: episode+mean reward, success+crash, policy loss, value loss |
+
+**Camera modes:** `F1` chase · `F2` side · `F3` top-down · `F4` cockpit — work in both `train_live` and `visualize` modes.

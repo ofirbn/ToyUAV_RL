@@ -1,0 +1,140 @@
+Waypoint FSM still broken.
+
+Telemetry now clearly shows the root issue.
+
+============================================================
+CRITICAL EVIDENCE
+============================================================
+
+Current telemetry simultaneously shows:
+
+STATE: APPROACHING
+CAPTURED: N
+
+while repeatedly printing:
+"WAYPOINT REACHED"
+
+This is logically inconsistent.
+
+The waypoint-reached event fires,
+but the FSM transition does NOT commit.
+
+============================================================
+LIKELY ROOT CAUSE
+============================================================
+
+The print/event trigger is disconnected from the actual FSM transition.
+
+Likely structure:
+
+if dist < threshold:
+    print("WAYPOINT REACHED")
+
+while actual capture requires additional conditions,
+or capture state is immediately overwritten/reset.
+
+============================================================
+REQUIRED FIXES
+============================================================
+
+1. Move waypoint event emission INSIDE successful FSM transition only.
+
+DO NOT print:
+"WAYPOINT REACHED"
+
+unless capture transition actually commits.
+
+============================================================
+2. Add explicit FSM transition logging.
+============================================================
+
+Log:
+APPROACHING -> CAPTURED
+CAPTURED -> TRANSITIONING
+TRANSITIONING -> TRACKING_NEW_LEG
+
+============================================================
+3. Make capture persistent.
+============================================================
+
+Once captured:
+store persistent flag/timestamp.
+
+Do not allow immediate rollback.
+
+============================================================
+4. Add waypoint capture hysteresis.
+============================================================
+
+After capture:
+disable capture checks for:
+- cooldown time
+OR
+- minimum traveled distance.
+
+============================================================
+5. Ensure FSM owns all logic.
+============================================================
+
+No standalone:
+if dist < threshold:
+    print(...)
+
+All waypoint events must originate from FSM transitions only.
+
+============================================================
+6. Add capture criteria telemetry.
+============================================================
+
+Display:
+- capture_threshold
+- heading_ok
+- cooldown_active
+- capture_eligible
+- capture_timer
+
+============================================================
+7. Add single-shot event logic.
+============================================================
+
+Waypoint reached event should fire ONCE only.
+
+Use:
+event_consumed flag.
+
+============================================================
+8. Validate update order.
+============================================================
+
+Ensure:
+- state transition
+- capture commit
+- waypoint increment
+- telemetry update
+
+occur in correct order.
+
+Avoid:
+state overwrite later in same frame.
+
+============================================================
+9. GOOD NEWS
+============================================================
+
+Progress continuity now appears significantly healthier:
+wp_prev_dist 127.4
+wp_curr_dist 126.2
+progress +0.382
+
+So distance/progress bookkeeping improved.
+
+Remaining issue now appears mainly:
+FSM/event synchronization.
+
+============================================================
+10. Goal
+============================================================
+
+Waypoint system should behave like:
+a deterministic mission state machine,
+not repeated threshold-trigger prints.

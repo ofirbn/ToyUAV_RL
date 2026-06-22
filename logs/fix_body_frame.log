@@ -1,0 +1,39 @@
+Prompt: prompts\fix_body_frame.txt 
+-------------------------------------------- 
+All changes are clean. Here's a summary of everything that was done:
+
+---
+
+**What changed:**
+
+**`render/pygame_renderer.py`**
+
+1. **Debug mode state** added to `__init__`: `_debug_mode`, `_dbg_roll/pitch/yaw`, `_dbg_pos`, frozen camera vectors, `_DBG_STEP = 1°/frame`
+
+2. **New public API:**
+   - `toggle_debug_mode()` — freezes aircraft at its current position, locks the camera, seeds debug angles from current vis state
+   - `reset_debug_angles()` — zeros roll/pitch/yaw
+   - `debug_mode` property
+
+3. **`_render_3d_view` split** into debug/normal paths:
+   - Debug: polls keys via `_update_debug_keys()`, overrides `s.pos/roll/pitch/yaw`, bypasses camera update
+   - Normal: unchanged smoothing + `_set_camera()`
+
+4. **`_draw_debug_overlay`** — semi-transparent box showing live roll/pitch/yaw values and control hints
+
+5. **Rotation matrix comment** rewritten with explicit zero-angle verification and 90° roll verification
+
+**`visualize.py`**
+
+- `TAB` toggles debug mode
+- `Q` quits only when **not** in debug mode (in debug mode it rolls left)
+- `R` resets debug angles (instead of episode reset) when in debug mode
+- `1–8` mode switches disabled in debug mode
+
+---
+
+**How to use the debug mode:**
+1. Press **TAB** — aircraft freezes in place, camera locks
+2. Hold **Q/E** to roll, **W/S** to pitch, **A/D** to yaw
+3. At roll=0, pitch=0: wings must be flat horizontal, RED axis pointing away from camera, GREEN axis pointing sideways, BLUE axis pointing up
+4. Press **R** to zero all angles, **TAB** again to return to live mode

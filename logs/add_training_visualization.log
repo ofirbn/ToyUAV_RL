@@ -1,0 +1,15 @@
+Prompt: prompts\add_training_visualization.txt 
+-------------------------------------------- 
+Everything looks correct. Here's a summary of what was built and how it fits together:
+
+---
+
+**4 files changed/created:**
+
+**`shared_state.py`** (new) — a single module-level `dict` protected by a `threading.Lock`. The training thread calls `update(patch)`, the renderer calls `read()` — no other interaction between threads.
+
+**`render/pygame_renderer.py`** — two new module-level proxy classes (`_StateProxy`, `_TargetProxy`) that duck-type `AircraftState` / `TargetInfo` from a plain dict, so all 10+ existing internal draw methods work unchanged. New `render_state(d)` entry point and `_draw_hud_state()` that show live training info (timestep counter, mean ep reward, episode reward).
+
+**`train.py`** — `LiveCallback` extracts state from `env.envs[0]` after every step and writes to `shared_state`. `train_live()` opens the pygame window on the main thread immediately, then starts one background thread that calls `model.learn(chunk, reset_num_timesteps=False)` in a loop (`CHUNK_SIZE=1024`). The main thread runs the 60 FPS render loop, reads `shared_state`, and calls `renderer.render_state()`. ESC/close sets a `stop_event`, joins the thread with a 3-second timeout, then exits.
+
+**`main.py`** — `mode=train_live` in `config.txt` routes to `train_live()`.

@@ -1,0 +1,34 @@
+Prompt: prompts\alt_hold_smooth_learning.txt 
+-------------------------------------------- 
+The MODE CHANGE logs confirm both ALTITUDE_HOLD and STABILIZE are appearing — the 70/30 weighted sampling is working (previously only ALTITUDE_HOLD would appear). All changes verified. Here's the full summary:
+
+---
+
+## What changed and why
+
+### `sim/rewards.py` — core fix
+**`_altitude_hold`**: tolerance widened from `exp(-err/20)` → `exp(-err/30)`.
+
+| alt_err | old reward | new reward |
+|---------|-----------|-----------|
+| 60 m    | **0.05** (collapsed!) | **0.13** (gradient preserved) |
+| 30 m    | 0.22 | 0.37 |
+| 15 m    | 0.47 | 0.61 |
+| 0 m     | 1.00 | 1.00 |
+
+Added `altitude_error` (signed metres) to the reward breakdown so it shows up live in the HUD.
+
+### `sim/curriculum.py` — 70/30 replay
+Added `_PHASE_WEIGHTED_MODES` and `get_phase_weighted_modes()`. The `altitude_hold` phase (and `altitude` alias) now samples **70% ALTITUDE_HOLD + 30% STABILIZE** instead of a hard 100% lock, preserving wings-level flight quality during energy-management learning.
+
+### `envs/fixed_wing_env.py`
+- Imports `get_phase_weighted_modes`; `_reset_training` now branches: **weighted** → **locked** → **free**, bypassing the hard lock for altitude_hold
+- Added to `info` dict every step: `target_altitude`, `altitude_error`, `vertical_speed`, `throttle_actual`
+- `_episode_success` for ALT_HOLD prints which condition failed: `altitude_error`, `speed_err`, or `vspd`
+
+### `train.py` — LiveCallback
+Passes `altitude_error`, `vertical_speed`, `throttle_actual` into `shared_state` alongside the existing throttle/airspeed fields.
+
+### `render/pygame_renderer.py` — HUD
+ALT HOLD panel now shows five rows with color coding (green/amber/red):
+`TGT_ALT` | `ALT_ERR` | `TGT_SPD` | `SPD_ERR` | `VRT_SPD`

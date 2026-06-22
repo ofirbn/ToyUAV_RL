@@ -1,0 +1,224 @@
+All code changes verified. Now here is the full investigation report.
+
+---
+
+## Cross-Mode Behavior Leakage Investigation
+
+### Section 1 — Mode Conditioning: PASS
+
+**A. Mode one-hot validity**
+- `_build_obs()` (env:899): `mode_oh = np.zeros(NUM_MODES); mode_oh[int(self._mode)] = 1.0` — exactly one bit, correct index, correct type. ✓
+- Reset sets `self._mode = mode` before `_build_obs()` is called. ✓
+- Updated every step from `self._mode` which is authoritative. ✓
+- Assertion in `step()` (env:689–695) enforces curriculum lock invariant at every step. ✓
+
+**B. Teacher receives same mode**
+- `teacher.act(obs, phase, target=t)` in recording pipeline: when `phase` is a string, the teacher reads mode from `obs[19:27]` — the same one-hot the env wrote. ✓
+
+**C. BC dataset stores correct mode**
+- `all_phase_ids.append(int(env._mode))` in `_record_phase_visual()` ✓
+- Verified empirically: `all_demo_001.npz` — **0 mismatches** between `phases` array and `obs[19:27]` argmax across 1,831,322 steps. ✓
+
+**D. PPO receives same mode**
+- PPO calls `env.step()` → `_build_obs()` — same path. ✓
+
+---
+
+### Section 2 — Mode Transition Bleed: LOW RISK
+
+**Training episodes have zero mid-episode transitions.**
+
+In training mode (`mission is None`), mode is selected once at `_reset_training()` and never changes during the episode. The `step()` mission-update branch is skipped entirely. Verified: 3,500 episodes in `all_demo_001.npz` — **0 episodes with within-episode mode changes**.
+
+**Minor findings in mission mode only:**
+
+| Variable | Status | Impact |
+|---|---|---|
+| `_prev_action` | NOT reset on mode transition | 4/31 obs dims carry old-mode action. Minor. |
+| `_loiter_radius_buf` | NOT cleared on transition | Diagnostics-only, no obs/reward effect. |
+| `_wp_state`, `_wp_transition_timer` | Correctly reset in non-WAYPOINT `else` branch (env:533–535) | ✓ |
+| Target vector | Immediately updated from `mission.get_target()` | ✓ |
+| Stall steps | NOT reset on transition | Could carry stall pressure across RECOVERY → other mode. Minor. |
+
+---
+
+### Section 3 — Reward Overlap: NO FUNCTIONAL INTERFERENCE
+
+Active terms per mode:
+
+| Mode | Primary terms |
+|---|---|
+| STABILIZE | `roll_level`, `pitch_level`, `rate_penalty`, `airspeed` |
+| ALTITUDE_HOLD | `altitude_reward` (exp), `vspd_penalty`, `airspeed_reward`, `thr_deriv` |
+| HEADING_HOLD | `heading_reward`, `bank_penalty` |
+| WAYPOINT | `progress` (Δdist×0.3), `alt_penalty`, `arrival_bonus` |
+| LOITER | `radius_reward`, `tangential_flight`, `radial_vel_pen`, `altitude_reward`, `speed_reward`, `coord_turn`, `bank_tracking`, `sideslip_pen`, `cheat_turn_pen` |
+| APPROACH | `progress` (Δdist×0.3), `glide_slope`, `lateral_align`, `sink_rate` |
+| RECOVERY | `airspeed_reward`, `wings_level`, `pitch_safe` |
+
+**Flagged overlap:**
+- WAYPOINT and APPROACH use **identical** `progress = (prev_dist - curr_dist) * 0.3`. This is intentional: both modes need forward motion toward a target. It does not cause circular behavior; it causes straight-line behavior — which is exactly what WAYPOINT should do, and what APPROACH should do once it intercepts the glideslope.
+- No reward term in APPROACH rewards orbiting or sustained bank. LOITER's `tangential_flight`, `coord_turn`, and `bank_tracking` terms are all LOITER-exclusive.
+
+**Conclusion: reward overlap does not explain APPROACH looking like LOITER.** The reward structures are functionally distinct.
+
+---
+
+### Section 4 — Observation Ambiguity: SIGNIFICANT FINDING
+
+**FINDING 1: LOITER `obs[17]` (heading error) is noise during training.**
+
+In `_reset_training()` (env:358–369), the LOITER TargetInfo is created with no heading:
+```python
+self._target = TargetInfo(FlightMode.LOITER, position=[cx, cy, alt],
+                          altitude=alt, radius=radius)  # heading=0.0 (default)
+```
+
+`_build_obs()` computes `hdg_e = _angle_diff(target.heading=0.0, yaw) / π = -yaw/π`.
+
+This is the aircraft's absolute yaw divided by π — a meaningless signal. The policy can't use it to know which direction to bank for the orbit. Verified:
+```
+LOITER training obs[17] = -yaw/π = -0.254  (just absolute heading)
+Correct tangential obs[17] should be = -0.509  (heading error to CCW tangent)
+```
+
+By contrast, `MissionManager._seg_to_target()` (mission_mgr:188) correctly sets:
+```python
+tangent_hdg = math.atan2(-dy, dx)  # CCW tangent at aircraft's angular position
+```
+This creates a train/deploy distribution shift: BC demos recorded in training mode have `hdg_e = -yaw/π`, but mission deployment uses the correct tangential heading. **The policy learns LOITER without a useful heading signal.**
+
+**FINDING 2: Loiter orbit radius is not observable.**
+
+`obs[16]` = `dist_to_center / 500` — distance to orbit center, not radial error. The desired radius is not in the observation. The policy cannot compute `dist_to_center - desired_radius` explicitly. It must discover the implicit target radius entirely from the reward signal.
+
+**FINDING 3: All-demo BC data is 30% loiter by step count.**
+
+```
+all_demo_001.npz mode distribution:
+  LOITER:   554,066 steps  (30.3%)
+  APPROACH: 330,080 steps  (18.0%)
+  HDG_HOLD: 322,574 steps  (17.6%)
+```
+
+Loiter episodes are long (orbit completion takes many steps), so loiter dominates the BC dataset. The shared 256×256 MLP pre-trained on this data has strong circular-motion priors encoded in the shared weights. Modes are conditioned only on 8 bits in a 31-D input — the mode one-hot can suppress but may not fully override learned circular behavior in adjacent modes.
+
+**Per-mode observation sufficiency:**
+
+| Mode | What's missing from obs |
+|---|---|
+| STABILIZE | Nothing critical |
+| ALTITUDE_HOLD | Nothing critical |
+| HEADING_HOLD | Nothing critical |
+| WAYPOINT | Nothing critical (heading computed from target_dx/dy) |
+| **LOITER** | **Orbit radius not encoded. Heading (obs[17]) is meaningless in training.** |
+| APPROACH | Explicit cross-track error not encoded; derivable from obs[13:16] + obs[17] |
+| LANDING | Nothing critical |
+| RECOVERY | Nothing critical |
+
+---
+
+### Section 5 — Teacher Dataset Contamination: NONE
+
+- All 3,500 episodes in `all_demo_001.npz` have **exactly one mode throughout** (0 within-episode mode transitions).
+- Obs mode one-hot matches the `phases` array with **0 mismatches** in 1,831,322 steps.
+- Each phase's recordings are generated with `get_locked_mode()` enforcing single-mode episodes.
+- No cross-phase contamination exists in the recorded demos.
+
+---
+
+### Section 6 — Diagnostics Panel: ADDED
+
+A `CROSS-MODE DIAGNOSTICS` overlay has been added to the bottom-left of the 3D view in `pygame_renderer.py`. It displays every frame:
+
+| Field | Description |
+|---|---|
+| Mode one-hot | 8 colored squares, active mode highlighted |
+| TGT BRG / ELEV | Horizontal bearing + elevation angle to target |
+| HDG ERR | Current heading vs target heading (degrees) |
+| ALT ERR | Altitude error (meters) |
+| TURN RATE | `\|yaw_rate\|` in °/s — orbit signal |
+| CURVATURE | `\|yaw_rate\| / airspeed` in rad/m |
+| STRAIGHT | `exp(-\|yaw_rate\| × 3)` — 1=straight, 0=tight turn |
+| ORBIT SCR | For LOITER: `1 - \|radial_err\| / radius`; else N/A |
+| V-OSC | σ of last 6 s of vertical speed |
+
+Color coding: green (healthy) → amber (watch) → red (problem).
+
+---
+
+### Section 7 — Root Cause Classification
+
+**Most likely: B (Observation Ambiguity) amplified by E (Shared Policy Interference)**
+
+The APPROACH-looks-like-LOITER symptom has this explanation chain:
+
+1. BC pre-training with 30% loiter data encodes circular-motion behavior deeply into the shared MLP.
+2. The LOITER training signal is trained WITHOUT a meaningful heading error (obs[17] = noise), so the policy learns to orbit purely from the `tangential_flight` and `radius_reward` terms by trial and error. This produces behavior that looks more "feel-based" (smooth rolling curves) rather than heading-commanded.
+3. When PPO fine-tunes for APPROACH from these BC weights, the shared layers retain circular-motion priors. The APPROACH reward (`progress + glide_slope - lateral_align`) has a relatively sparse signal — the `lateral_align` penalty only fires when far from centerline, giving weak gradient for breaking the orbital pattern early.
+4. Result: the policy takes curved approaches that look loiter-like, especially in the initial intercept phase.
+
+This is NOT true mode leakage (the one-hot is correct, the reward is mode-specific), but it IS shared-policy interference from unbalanced BC pretraining + an undertrained LOITER obs space.
+
+---
+
+### Section 8 — Recommended Fixes (priority order)
+
+**1. Fix LOITER target heading in `_reset_training()` — lowest impact, highest value**
+
+In `envs/fixed_wing_env.py`, change the LOITER training reset to compute the CCW tangential heading at the aircraft's initial position relative to the orbit center:
+
+```python
+elif mode == FlightMode.LOITER:
+    radius   = float(self.np_random.uniform(*diff.loiter_rad_range))
+    left_yaw = yaw - math.pi / 2
+    cx = math.sin(left_yaw) * radius
+    cy = -math.cos(left_yaw) * radius
+    # --- ADD: compute CCW tangential heading at aircraft's initial position ---
+    dx_init = 0.0 - cx;  dy_init = 0.0 - cy
+    tangent_hdg = math.atan2(-dy_init, dx_init)
+    # -------------------------------------------------------------------------
+    self._state = AircraftState(...)
+    self._target = TargetInfo(FlightMode.LOITER,
+                              position=[cx, cy, alt],
+                              altitude=alt, radius=radius,
+                              heading=tangent_hdg)   # <-- was: no heading
+```
+
+This makes `obs[17]` meaningful (tangential heading error), aligns training with mission deployment, and gives the APPROACH policy a cleaner LOITER distinction.
+
+**2. Per-phase BC pre-training for the pipeline**
+
+When running `train_pipeline_visual()`, the all-phases BC step overweights loiter. For APPROACH fine-tuning, pre-train BC on approach+landing data only, not all-phases combined.
+
+**3. Reset `_prev_action` on mission-mode transitions**
+
+In `step()`, after `self._mode = t.mode` when `t.mode != prev_step_mode`, add:
+```python
+if t.mode != prev_step_mode:
+    self._prev_action = np.zeros(4)
+```
+
+**4. Strengthen APPROACH lateral alignment reward**
+
+The current `lateral_p = min(abs(lateral)/30.0, 1.0) * 0.4` caps at 0.4 and uses a 30m tolerance. Consider reducing tolerance to 15m and raising the cap to 0.6. This increases gradient pressure to break circular approaches.
+
+**5. (Only if 1–4 don't resolve it): Mode-specific output heads**
+
+Shared encoder (first 256-unit layer) + 8 mode-specific 256→4 output layers. Only justified if the diagnostics panel confirms that after fix #1, APPROACH still exhibits sustained curvature > 0.1/m with STRAIGHT score < 0.5.
+
+---
+
+### Final Summary
+
+| Check | Result |
+|---|---|
+| A. Mode conditioning | **PASS** — one-hot correct end-to-end |
+| B. Transition persistence | **MINOR** — `_prev_action` not reset in mission mode; no effect in training |
+| C. Reward overlap | **NOT CAUSAL** — LOITER and APPROACH rewards are structurally distinct |
+| D. Observation ambiguity | **SIGNIFICANT** — LOITER `obs[17]` is noise during training; orbit radius not observable |
+| E. Dataset contamination | **NONE** — 0 within-episode mode transitions, 0 obs/phases mismatches |
+| F. Most likely root cause | **Obs ambiguity (LOITER heading = 0.0 in training) + shared policy circular-motion prior from 30% loiter BC data** |
+| G. Diagnostics panel | **ADDED** — `renderer._draw_cross_mode_diag()` in bottom-left of 3D view |
+
+The diagnostics panel is now live in the renderer. The immediate fix to apply is #1 (loiter heading in `_reset_training`) — one line change, no architectural impact.

@@ -1,0 +1,41 @@
+Prompt: prompts\proceed_with_m1.txt 
+-------------------------------------------- 
+M1 is implemented. Here's the summary as requested:
+
+## 1. Files changed
+
+- **New:** `controllers/mission_manager.py` — `MissionManager` + `Expert` classes. `MissionManager.load()` loads the single default policy using the same fallback-path logic `visualize.py` used to have inline. `get_active_expert(flight_mode)` always returns that one default expert for every `FlightMode` (M1 scope — `models/experts/` is not consulted; that's M2/M3). `predict(obs, flight_mode)` forwards to the active expert.
+- **Modified:** `visualize.py` — replaced the inline `PPO.load(...)` candidate-search loop and `model.predict(...)` call with `MissionManager(default_model_path=model_spec).load()` and `mission_mgr.predict(obs, env.mode, deterministic=True)`. `train.py` and `main.py` are untouched — they never called `model.predict` directly (training uses `model.learn`), so they're outside this milestone's blast radius.
+
+## 2. Commands to test
+
+```bash
+# Compile check (already verified)
+python -c "import controllers.mission_manager"
+
+# Visualize/demo path (the one route that changed)
+python main.py            # set mode=visualize or mode=demo in config.txt
+
+# Train path (unmodified — should behave exactly as before)
+python main.py            # set mode=train or mode=train_visual in config.txt
+```
+
+## 3. Expected output
+
+- Visualize: console prints `[MISSION] Loading default policy from <path>.zip` (replacing the old `[VIZ] Loading model from ...` line) then the pygame window opens and the aircraft flies identically to before — same model, same `deterministic=True` inference, every flight mode (1-8 override keys included) routed through the same single policy.
+- If no model file is found: `[MISSION] No default policy loaded — falling back to random actions.` and the env falls back to `action_space.sample()`, same as before.
+- Train: zero behavior change — `train.py`/`main.py` weren't touched.
+
+I ran a smoke test in the project venv: `MissionManager(...).load()` loaded `models/latest.zip` successfully, and `get_active_expert(FlightMode.LOITER)` returned the loaded default expert (confirming uniform routing for M1). `visualize.py` compiles cleanly.
+
+## 4. Rollback
+
+```bash
+git checkout -- visualize.py
+rm controllers/mission_manager.py
+```
+
+(`controllers/mission_manager.py` is new/untracked, so `git checkout` won't touch it — delete manually as shown.)
+
+---
+Per the M1 instructions, M2–M5 (loading expert checkpoints from `models/experts/`, routing inference per-mode, mode-specific training scripts, smooth transitions) are **not** implemented — `MissionManager._experts` is an empty dict by design, ready for M2 to populate.

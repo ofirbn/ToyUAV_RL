@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Write(*)",
+      "Edit(*)",
+      "Read(*)",
+      "Bash(*)",
+      "PowerShell(*)"
+    ]
+  }
+}

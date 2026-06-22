@@ -1,0 +1,18 @@
+Proceed with M1 only.
+
+Do not implement M2–M5 yet.
+
+For M1:
+- Introduce the Mission Manager abstraction cleanly.
+- Preserve today’s single-model behavior exactly when models/experts/ is empty.
+- Do not change reward logic yet.
+- Do not change environment dynamics yet.
+- Do not break current train / visualize / demo commands.
+- Provide unified diffs only for M1.
+- After implementation, give me:
+  1. files changed
+  2. exact commands to test
+  3. expected output
+  4. rollback instructions
+
+Before editing, briefly list the exact files you intend to modify.

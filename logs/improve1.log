@@ -1,0 +1,37 @@
+Prompt: prompts\improve1.txt 
+-------------------------------------------- 
+Rotation matrix is mathematically verified:
+- Level flight: nose → [0,-1,0] ✓, right wing → [1,0,0] ✓, up → [0,0,1] ✓
+- Pitch up 30°: nose gains +Z = 0.5 ✓
+- Roll right 30°: right wing dips -Z = -0.5 ✓ (right bank = right wing down)
+
+Here's a summary of all changes made:
+
+---
+
+**`aircraft.py`** (physics)
+- Actuator lag: 0.95×prev + 0.05×cmd per step (was 0.9×prev + 0.1×cmd) — much heavier lag
+- Added per-surface rate limiting (±0.6/s max)
+- ELEV_GAIN: 0.8→0.45, AIL_GAIN: 1.5→0.8, RUDD_GAIN: 0.4→0.20 — authority reduction
+- PITCH_DAMP: 4→7, ROLL_DAMP: 5→9, YAW_DAMP: 3→5 — damping increase
+- PITCH_STAB: 1.5→2.5, ROLL_STAB: 3.5→5.5 — stronger static stability
+- STALL_ALPHA: 14°→13°, STALL_NOSE_DOWN: 4→7, stall drag: 0.8→1.2× — better stall model
+- Sideslip keel damping: 0.2→0.5 — improved coordinated turns
+
+**`render/pygame_renderer.py`** (renderer)
+- **Body frame corrected**: X=forward(nose), Y=right wing, Z=up (was X=right, Y=aft)
+- **Rotation matrix rewritten** to match new frame — verified algebraically
+- Debug axes enabled: red=X(fwd), green=Y(right), blue=Z(up)
+- Camera SMOOTH: 0.05→0.04, chase offset moved further back (55→70 m)
+- VIS_SMOOTH: 0.15→0.12 for smoother attitude interpolation
+
+**`envs/fixed_wing_env.py`** (environment)
+- Stall crash now requires 15 sustained stall steps (1.5 s) instead of instant crash
+- action_smooth_weight default: 0.03→0.06
+- Added surface saturation penalty (>85% deflection)
+- Added angular rate penalty (discourages oscillation)
+- Stall per-step penalty: -5.0→-3.0 (less harsh now that crash is delayed)
+
+**`sim/curriculum.py`** (curriculum)
+- Stabilize stage 1: roll_perturb 0.25→0.12 rad (±7°), pitch_perturb 0.12→0.06 rad (±3°), spd_range 9-12→10-12 m/s
+- Cruise stage 2: roll_perturb 0.5→0.35, pitch_perturb 0.3→0.20 — gentler progression

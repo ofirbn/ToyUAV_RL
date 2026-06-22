@@ -1,0 +1,26 @@
+Prompt: prompts\fix_crash_episodes.txt 
+-------------------------------------------- 
+Here's a summary of everything implemented:
+
+---
+
+**`sim/crash_diagnostics.py`** (new)
+- `CrashType` enum: STALL, CEILING_EXCEED, SPIRAL, OVERBANK, ENERGY_LOSS, OSCILLATION, GROUND_IMPACT, UNKNOWN
+- `classify_crash()` — classifies from final state: stall_steps≥15 → STALL; |roll|>70°+fast → SPIRAL; |roll|>70° → OVERBANK; airspeed<8 → ENERGY_LOSS; high ctrl_osc → OSCILLATION; else GROUND_IMPACT
+- `save_crash_report()` — saves JSON to `logs/crashes/` every 5th crash (rate-limited), auto-rotates beyond 200 files
+
+**`envs/fixed_wing_env.py`**
+- 60-step rolling telemetry buffer (`_telemetry_buf`) recording pos/airspeed/attitude/rates/action each step
+- Crash classification + save called at episode end; `info['crash_type']` is now populated for every crash
+
+**`aircraft.py`**
+- `AIL_GAIN`: 0.8 → **0.70** (max sustainable bank: ~38° → ~33°)
+- `SURF_RATE_LIMIT`: 0.6 → **0.50** units/s (surfaces move 17% slower, smoother response)
+
+**`sim/curriculum.py`** — stabilize mastery gate:
+- `max_crash_rate`: 0.04 → **0.10** (allows progression at current ~11% crash rate)
+- `min_success_rate`: 0.92 → **0.85**
+- `max_stall_rate`: 0.04 → **0.06**
+- `min_ep_length`: 350 → **300** steps
+
+After running for a while, inspect `logs/crashes/` to see which crash types dominate — that'll tell you where to focus next (if OVERBANK is dominant, reduce `ROLL_STAB` further; if ENERGY_LOSS, look at throttle management).

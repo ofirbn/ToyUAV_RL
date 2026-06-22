@@ -1,0 +1,29 @@
+Prompt: prompts\fix_bug3.txt 
+-------------------------------------------- 
+All changes are in place and consistent. Here's a summary of everything that was done:
+
+---
+
+**Root causes fixed:**
+
+1. **Stabilize-only lock** — the old guard `if self._curriculum_phase == 'stabilize'` only locked one phase. All other phases (altitude, heading, etc.) used cumulative mode lists (`[STABILIZE, RECOVERY, ALT_HOLD, ...]`), so the policy was trained on mixed objectives.
+
+2. **Curriculum-manager path bypassed lock entirely** — when `curriculum=true`, `curriculum_manager` is passed to the env but `curriculum_phase` is not, so `self._curriculum_phase` defaulted to `'mixed'`. The old assertion `if self._curriculum_phase == 'stabilize'` never fired, even during the stabilize stage.
+
+---
+
+**Changes made:**
+
+| File | Change |
+|---|---|
+| `sim/curriculum.py` | Added `_PHASE_SINGLE_MODE` dict + `get_locked_mode(phase)` function |
+| `envs/fixed_wing_env.py` | Replaced stabilize-only lock with `get_locked_mode(self._active_phase)` — now locks all named phases. Lock is derived from `_active_phase` (the CurriculumManager's current stage), not the config-level `_curriculum_phase`. Added `_autonomous_switching` attribute. Updated both reset and step assertions. Added `autonomous_switching_enabled` to info. |
+| `train.py` | Added `autonomous_switching_enabled` to shared state patch |
+| `render/pygame_renderer.py` | Added `AutoSwitch: OFF (LOCKED)` row in curriculum panel (yellow when locked) |
+
+**Expected behavior per phase:**
+- `stabilize` → ONLY STABILIZE, `AutoSwitch: OFF (LOCKED)`
+- `altitude` / `altitude_hold` → ONLY ALT_HOLD, `AutoSwitch: OFF (LOCKED)`
+- `heading` / `heading_hold` → ONLY HDG_HOLD, `AutoSwitch: OFF (LOCKED)`
+- `waypoint`, `loiter`, `approach`, `landing`, `recovery` → same pattern
+- `mixed` → all modes, `AutoSwitch: ON`

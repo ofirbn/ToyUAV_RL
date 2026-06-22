@@ -18,9 +18,10 @@ CURRICULUM_STAGES = [
     "stabilize", "cruise", "altitude_hold", "heading_hold",
     "waypoint", "loiter", "approach", "landing", "mixed",
 ]
-MODES = ["train_visual", "train", "visualize", "demo"]
+MODES = ["train_visual", "pipeline_visual", "train", "visualize", "demo"]
 
-_SCRATCH = "(train from scratch)"
+_SCRATCH     = "(train from scratch)"
+_RECORD_NEW  = "(record new demos)"
 
 
 # ── config I/O ────────────────────────────────────────────────────────────────
@@ -95,6 +96,36 @@ class ConfigGUI:
 
         self.save_every_var = tk.StringVar(value=cfg.get("save_every", "100000"))
         r = self._entry(outer, r, "Save every (steps)", self.save_every_var)
+
+        # ── PIPELINE (pipeline_visual mode) ───────────────────────────────────
+        r = self._section(outer, "PIPELINE  (pipeline_visual mode only)", r)
+
+        demos = [_RECORD_NEW] + (_scan("results/demos", ".npz") or [])
+        demo_default = cfg.get("demo_path", _RECORD_NEW)
+        if demo_default not in demos:
+            demo_default = _RECORD_NEW
+        self.demo_var = tk.StringVar(value=demo_default)
+        r = self._combo(outer, r, "Demo recordings (step 1)", self.demo_var,
+                        demos, editable=False, pin_top=True)
+
+        _phase_opts = ["all"] + CURRICULUM_STAGES[:-1]  # all + individual (exclude mixed)
+        self.record_phases_var = tk.StringVar(value=cfg.get("record_phases", "all"))
+        r = self._combo(outer, r, "  Record phases", self.record_phases_var,
+                        _phase_opts, editable=False)
+
+        self.record_ep_var = tk.StringVar(value=cfg.get("record_episodes", "100"))
+        r = self._entry(outer, r, "  Episodes per phase", self.record_ep_var)
+
+        bc_models = ["(run BC training)"] + (_scan("models/bc", ".zip") or [])
+        bc_default = cfg.get("bc_model_path", "(run BC training)")
+        if bc_default not in bc_models:
+            bc_default = "(run BC training)"
+        self.bc_model_var = tk.StringVar(value=bc_default)
+        r = self._combo(outer, r, "BC model (step 2)", self.bc_model_var,
+                        bc_models, editable=False, pin_top=True)
+
+        self.bc_epochs_var = tk.StringVar(value=cfg.get("bc_epochs", "60"))
+        r = self._entry(outer, r, "  BC epochs", self.bc_epochs_var)
 
         # ── CURRICULUM ────────────────────────────────────────────────────────
         r = self._section(outer, "CURRICULUM", r)
@@ -225,16 +256,25 @@ class ConfigGUI:
             "action_smooth_weight": self.smooth_var.get(),
             "stall_speed":          self.stall_var.get(),
             "wireframe":            "true" if self.wireframe_var.get() else "false",
+            "demo_path":            ("" if self.demo_var.get() == _RECORD_NEW
+                                     else self.demo_var.get()),
+            "record_phases":        self.record_phases_var.get(),
+            "record_episodes":      self.record_ep_var.get(),
+            "bc_model_path":        ("" if self.bc_model_var.get() == "(run BC training)"
+                                     else self.bc_model_var.get()),
+            "bc_epochs":            self.bc_epochs_var.get(),
         }
 
     def _validate(self) -> bool:
         try:
             ts = int(self.timesteps_var.get())
             se = int(self.save_every_var.get())
+            re = int(self.record_ep_var.get())
+            bc = int(self.bc_epochs_var.get())
             float(self.stall_var.get())
             float(self.smooth_var.get())
-            if ts <= 0 or se <= 0:
-                raise ValueError("timesteps and save_every must be > 0")
+            if ts <= 0 or se <= 0 or re <= 0 or bc <= 0:
+                raise ValueError("timesteps, save_every, record_episodes, bc_epochs must be > 0")
             return True
         except ValueError as e:
             messagebox.showerror("Invalid Input", str(e))

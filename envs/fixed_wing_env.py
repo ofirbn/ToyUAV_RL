@@ -217,7 +217,22 @@ class FixedWingEnv(gym.Env):
         self._prev_pos             = self._state.pos.copy()
         self._prev_throttle_cmd    = float(self._state.throttle_pos)
         self._prev_throttle_actual = float(self._state.throttle_pos)
-        return self._build_obs(), {}
+        obs = self._build_obs()
+
+        # Verification print: show tangent heading semantics for first 5 LOITER resets
+        if self._training_mode and self._mode == FlightMode.LOITER:
+            if not hasattr(self, '_loiter_reset_count'):
+                self._loiter_reset_count = 0
+            if self._loiter_reset_count < 5:
+                print(
+                    f"[LOITER_HDG_CHECK] reset#{self._loiter_reset_count + 1}"
+                    f"  yaw={math.degrees(self._state.yaw):.1f}°"
+                    f"  target.heading={math.degrees(self._target.heading):.1f}°"
+                    f"  obs[17]={obs[17]:.4f}"
+                )
+                self._loiter_reset_count += 1
+
+        return obs, {}
 
     # -------------------------------------------------------------- training --
 
@@ -364,9 +379,15 @@ class FixedWingEnv(gym.Env):
                 vel=_vel_from_heading(yaw, _LOITER_SPEED),
                 yaw=yaw, throttle_pos=_LOITER_THR,
             )
+            # CCW tangential heading at aircraft's initial position,
+            # matching MissionManager._seg_to_target() loiter convention.
+            _dx = 0.0 - cx
+            _dy = 0.0 - cy
+            tangent_hdg = math.atan2(-_dy, _dx)
             self._target = TargetInfo(FlightMode.LOITER,
                                       position=[cx, cy, alt],
-                                      altitude=alt, radius=radius)
+                                      altitude=alt, radius=radius,
+                                      heading=tangent_hdg)
 
         elif mode == FlightMode.APPROACH:
             rwy_x, rwy_y = 0.0, 0.0

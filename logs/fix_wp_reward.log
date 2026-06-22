@@ -1,0 +1,25 @@
+Prompt: prompts\fix_wp_reward.txt 
+-------------------------------------------- 
+Both files compile clean. Here's a summary of what changed and why:
+
+---
+
+**Root cause fixed:** `self._target` was updated to the new waypoint *before* `compute_reward` ran, so `curr_dist` (and implicitly `prev_dist`) were both referencing the new leg — making the arrival bonus unreachable and creating a meaningless progress value on the transition step.
+
+**What changed:**
+
+`sim/rewards.py`:
+- `_waypoint()` now accepts `prev_dist` (leg-local, passed from env) and `arrived_override` (pre-update truth). Both fall back to the old behavior when `None`, so the function is backward-compatible.
+- Arrival bonus raised **20 → 50** (was silently broken in mission mode anyway; now it actually fires).
+- Clip upper bound updated 25 → 55 to accommodate the larger bonus.
+
+`envs/fixed_wing_env.py`:
+- Before `mission.update()`: capture `dist_to_wp_pre_update` and `wp_arrived_pre_update` against the *current* target.
+- `_prev_wp_dist` / `_leg_start_dist` / `_wp_leg_initialized` — three new per-leg fields, reset at episode start and on any leg transition (`wp_switch_event`, mode entry, first step).
+- Proximity tracking (`_waypoint_reached`) now uses `wp_arrived_pre_update` so it correctly fires against the leg we were flying.
+- `compute_reward` receives the leg-local `prev_wp_dist` and the explicit `wp_arrived` flag on transition steps.
+- New info keys: `wp_arrived_this_step`, `wp_leg_reset`, `wp_leg_start_dist`, `wp_mission_idx`.
+
+**Transition step behavior (before → after):**
+- Before: `progress = -0.465`, `arrival_bonus = 0.0` (broken)
+- After: `progress = 0.0`, `arrival_bonus = 50.0` (correct)

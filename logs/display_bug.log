@@ -1,0 +1,3 @@
+Prompt: prompts\display_bug.txt 
+-------------------------------------------- 
+The window will now open immediately and show the "Initializing PPO training…" screen while the environments and model load in the background — no more frozen/not-responding window.

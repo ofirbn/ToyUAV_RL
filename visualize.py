@@ -20,11 +20,10 @@ import sys
 import pygame
 import numpy as np
 
-from stable_baselines3 import PPO
-
 from envs.fixed_wing_env import FixedWingEnv
 from render.pygame_renderer import Renderer
 from sim.flight_modes import FlightMode, MODE_NAMES
+from controllers.mission_manager import MissionManager
 
 
 FPS = 60
@@ -35,30 +34,18 @@ def run(cfg: dict = None, mission_path: str = None, use_model: bool = True):
         cfg = {}
 
     model_spec   = cfg.get("model", "models/latest.zip")
-    model_path   = model_spec.replace(".zip", "")
     mission_path = mission_path or cfg.get("mission", "missions/demo_mission.json")
-
-    # Try fallback paths if primary not found
-    candidates = [model_path, "models/latest", "models/best_reward",
-                  "models/fixed_wing_multimode_ppo"]
 
     pygame.init()
     W, H = 1600, 950
     pygame.display.set_mode((W, H))
     pygame.display.set_caption("ToyUAV RL — Visualising")
 
-    model = None
+    mission_mgr = None
     if use_model:
-        for candidate in candidates:
-            if os.path.exists(candidate + ".zip"):
-                try:
-                    print(f"[VIZ] Loading model from {candidate}.zip")
-                    model = PPO.load(candidate)
-                    break
-                except Exception as e:
-                    print(f"[VIZ] Could not load {candidate}: {e}")
-        if model is None:
-            print("[VIZ] No model loaded — using random actions.")
+        mission_mgr = MissionManager(default_model_path=model_spec).load()
+        if not mission_mgr.loaded:
+            mission_mgr = None
 
     mission_exists = os.path.exists(mission_path)
     env = FixedWingEnv(
@@ -124,8 +111,8 @@ def run(cfg: dict = None, mission_path: str = None, use_model: bool = True):
                 elif key == pygame.K_F4: cam_mode = 3
 
         if not done:
-            if model is not None:
-                action, _ = model.predict(obs, deterministic=True)
+            if mission_mgr is not None:
+                action, _ = mission_mgr.predict(obs, env.mode, deterministic=True)
             else:
                 action = env.action_space.sample()
 

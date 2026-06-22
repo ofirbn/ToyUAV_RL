@@ -5,10 +5,11 @@ Edit config.txt, then run:
     python main.py
 
 Supported modes:
-    train          — headless PPO training
-    train_visual   — PPO training with live pygame dashboard
-    visualize      — run trained model in pygame window
-    demo           — alias for visualize
+    train            — headless PPO training
+    train_visual     — PPO training with live pygame dashboard
+    pipeline_visual  — record teacher → BC → PPO, all in one pygame window
+    visualize        — run trained model in pygame window
+    demo             — alias for visualize
 """
 
 import os
@@ -64,9 +65,11 @@ def main():
     auto = cfg.get("curriculum", "false").lower() == "true"
     curr_info = (f"AUTO start={cfg.get('curriculum_phase','stabilize')}"
                  if auto else f"static phase={cfg.get('curriculum_phase','mixed')}")
+    force_new  = cfg.get("force_new", "false").lower() == "true"
+    model_info = "SCRATCH" if force_new else cfg.get("model", "models/latest.zip")
     print(f"[CONFIG] mode={mode}  timesteps={cfg.get('timesteps','?')}  "
           f"curriculum={curr_info}  "
-          f"model={cfg.get('model','models/latest.zip')}")
+          f"model={model_info}")
 
     if mode == "train":
         from train import train
@@ -76,13 +79,17 @@ def main():
         from train import train_visual
         train_visual(cfg)
 
+    elif mode in ("pipeline_visual", "pipeline"):
+        from train import train_pipeline_visual
+        train_pipeline_visual(cfg)
+
     elif mode in ("visualize", "demo"):
         from visualize import run
         run(cfg=cfg)
 
     else:
         print(f"[CONFIG] Unknown mode '{mode}'.")
-        print("  Set mode=train, train_visual, visualize, or demo in config.txt.")
+        print("  Set mode=train, train_visual, pipeline_visual, visualize, or demo in config.txt.")
 
 
 if __name__ == "__main__":

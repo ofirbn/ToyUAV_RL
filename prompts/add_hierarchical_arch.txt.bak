@@ -1,0 +1,62 @@
+The current PPO agent suffers from task specialization and catastrophic interference.
+
+Problem:
+- After learning one task (e.g., Loiter), the policy becomes biased toward that behavior and performs poorly on fundamentally different tasks (e.g., Approach and Landing).
+- Different flight modes require contradictory behaviors:
+  - Loiter: maintain altitude, fly circles, minimize aggressive maneuvers.
+  - Approach: descend continuously, align with runway, manage energy.
+  - Landing: flare, reduce speed, and touch down precisely.
+
+I want to refactor the project into a hierarchical autopilot architecture.
+
+Goals:
+1. Remove the single monolithic PPO policy.
+2. Create independent expert policies:
+   - Stabilize
+   - Recovery
+   - Altitude Hold
+   - Heading Hold
+   - Waypoint Navigation
+   - Approach
+   - Landing
+3. Implement a deterministic Mission Manager / State Machine that:
+   - Chooses the active expert based on mission phase and aircraft state.
+   - Passes mode-specific goals to each expert.
+   - Supports smooth transitions between experts.
+4. Keep the environment and renderer largely unchanged.
+5. Reuse as much existing code as possible.
+6. Allow experts to be trained independently and loaded separately.
+7. Provide a clean interface:
+
+   action = active_expert.predict(observation)
+
+8. Design for future extensions such as:
+   - Mixture-of-experts
+   - Shared feature extractor
+   - Joint fine-tuning
+   - Dynamic mode insertion
+
+Please:
+1. Analyze the current codebase structure.
+2. Propose a directory layout.
+3. Identify files that need modification.
+4. Produce an implementation plan with incremental milestones.
+5. Generate the exact code patches required for each milestone.
+6. Explain how to migrate existing checkpoints and training scripts.
+7. Keep backward compatibility wherever practical.
+
+The final architecture should resemble a real aircraft autopilot where each flight regime is handled by a specialized controller coordinated by a mission manager rather than a single policy trying to learn all behaviors simultaneously.
+
+Do NOT immediately rewrite the entire codebase.
+Work incrementally:
+- Milestone 1: Introduce the Mission Manager abstraction while keeping the existing PPO agent working.
+- Milestone 2: Support loading multiple expert policies.
+- Milestone 3: Route inference through the active expert.
+- Milestone 4: Add mode-specific training scripts.
+- Milestone 5: Add smooth transition logic and evaluation tooling.
+
+After each milestone, provide:
+1. Files changed
+2. Unified diffs
+3. Validation steps
+4. Rollback instructions

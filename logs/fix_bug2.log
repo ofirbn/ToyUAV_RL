@@ -1,0 +1,20 @@
+Prompt: prompts\fix_bug2.txt 
+-------------------------------------------- 
+All three changes are clean. Here's what was done and why:
+
+---
+
+**Root cause:** When `curriculum=true` with a saved `curriculum_state.json` at a later stage (e.g. `heading_hold`), `CurriculumManager._load()` completely ignores the `start_stage='stabilize'` argument — so `_active_phase` becomes `'heading_hold'`, the assertion `if _active_phase == 'stabilize'` never fires, and HDG_HOLD ends up in the active mode pool.
+
+**Three targeted fixes:**
+
+1. **Hard curriculum lock in `_reset_training()`** (`fixed_wing_env.py:196-199`)
+   Immediately after `emer_recovery` is resolved, if `_curriculum_phase == 'stabilize'` (the config-level value, not the manager's derived stage), clamp `active_modes = [STABILIZE]`, reset `_active_phase = 'stabilize'`, and force `emer_recovery = False`. This fires unconditionally — save files, CurriculumManager state, or curriculum=true all cannot override it.
+
+2. **`step()` assertion uses `_curriculum_phase`** (`fixed_wing_env.py:484`)
+   Changed from checking `_active_phase` to `_curriculum_phase`. `_active_phase` is derived and can drift; `_curriculum_phase` is set once from config and never changes. The assertion now fires for ANY run that was configured as stabilize, not just after a clean start.
+
+3. **`LiveCallback` displays `env0._active_phase`** (`train.py:399`)
+   Was reading `curr.stage_name` which reflects the CurriculumManager's internal state (potentially `heading_hold` from a save file). Now reads `env0._active_phase` which is always `'stabilize'` after the lock. Both `curriculum_phase` and `active_mode` in the telemetry panel will show `STABILIZE`.
+
+Reward isolation was already clean — `compute_reward(STABILIZE)` only uses roll, pitch, angular rates, and airspeed. No heading error term exists in the stabilize reward path.

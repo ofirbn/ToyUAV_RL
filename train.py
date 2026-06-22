@@ -12,6 +12,7 @@ as the rolling success rate exceeds 80 % over 100 consecutive episodes.
 curriculum=false  keeps the old static single-phase behaviour.
 """
 
+import math
 import os
 import time
 import collections
@@ -30,6 +31,7 @@ from sim.flight_modes import FlightMode, MODE_NAMES
 
 N_ENVS     = 4
 CHUNK_SIZE = 1024   # timesteps per learn() call in train_visual
+
 
 _EPISODE_WINDOW = 100
 
@@ -95,16 +97,35 @@ def _make_env(cfg: dict, curriculum_manager=None) -> DummyVecEnv:
 
 
 def _build_model(env, cfg: dict, load_path: str) -> PPO:
-    if cfg.get("force_new", "false").lower() != "true" and os.path.exists(load_path + ".zip"):
+    force_new  = cfg.get("force_new", "false").lower() == "true"
+    bc_path    = cfg.get("init_from_bc", None)
+
+    # 1. Resume from latest checkpoint (normal flow)
+    if not force_new and os.path.exists(load_path + ".zip"):
         try:
             model = PPO.load(load_path, env=env)
             print(f"[TRAIN] Loaded model from {load_path}.zip - continuing training.")
             return model
         except Exception as e:
             print(f"[TRAIN] Could not load model ({e}) — starting fresh.")
-    elif cfg.get("force_new", "false").lower() == "true":
+
+    elif force_new:
         print("[TRAIN] force_new=true — starting from scratch.")
 
+    # 2. Warm-start from behavior-cloned weights
+    if bc_path is not None:
+        bc_file = bc_path if bc_path.endswith(".zip") else bc_path + ".zip"
+        if os.path.exists(bc_file):
+            try:
+                model = PPO.load(bc_path, env=env)
+                print(f"[TRAIN] BC warm-start from {bc_file}")
+                return model
+            except Exception as e:
+                print(f"[TRAIN] Could not load BC model ({e}) — starting fresh.")
+        else:
+            print(f"[TRAIN] BC path not found: {bc_file} — starting fresh.")
+
+    # 3. Fresh model
     return PPO(
         "MlpPolicy",
         env,
@@ -588,6 +609,8 @@ def train(cfg: dict):
 
     curriculum_mgr = _make_curriculum(cfg)
 
+    bc_path      = cfg.get("init_from_bc", None)
+
     print(f"\n{'='*55}")
     print(f"  ToyUAV RL — Training")
     print(f"  Timesteps  : {timesteps:,}")
@@ -596,6 +619,8 @@ def train(cfg: dict):
         print(f"  Curriculum : AUTO  (start={curriculum_mgr.stage_name})")
     else:
         print(f"  Phase      : {cfg.get('curriculum_phase', 'mixed')}  (static)")
+    if bc_path:
+        print(f"  BC init    : {bc_path}")
     print(f"  Save path  : {latest_path}.zip")
     print(f"{'='*55}\n")
 
@@ -623,11 +648,9 @@ def train_visual(cfg: dict):
     """
     PPO training with live pygame telemetry dashboard.
 
-    Architecture:
-      - Main thread owns pygame (never yields it).
-      - Background thread runs model.learn() in small chunks.
-      - shared_state bridges the two: training writes, renderer reads.
-      - Renderer is read-only — never calls env.step() or model.predict().
+    Flow:
+      1. Config screen  — user sets teacher/curriculum params, clicks START.
+      2. Training phase — background thread runs PPO; main thread drives pygame.
     """
     import sys
     import threading
@@ -635,13 +658,43 @@ def train_visual(cfg: dict):
     import shared_state as ss
     from render.pygame_renderer import Renderer
 
+    W, H = 1600, 950
+
+    pygame.init()
+    pygame.display.set_mode((W, H))
+    pygame.display.set_caption("ToyUAV RL — Live Training Dashboard")
+    clock    = pygame.time.Clock()
+    renderer = Renderer(W, H)
+    font     = pygame.font.SysFont("Consolas", 26)
+
+    # ── Phase 1: pre-training config screen ───────────────────────────────────
+    renderer.init_config_screen(cfg)
+    cfg_action = None
+    while cfg_action != "start":
+        for event in pygame.event.get():
+            result = renderer.handle_config_event(event)
+            if result in ("start", "quit"):
+                cfg_action = result
+                break
+        if cfg_action == "quit":
+            pygame.quit()
+            sys.exit(0)
+        if cfg_action != "start":
+            renderer.render_config_screen()
+        clock.tick(60)
+
+    # Merge user choices into cfg and write back to config.txt
+    user_settings = renderer.get_config_draft()
+    renderer.save_config_to_file(user_settings)
+    cfg = {**cfg, **user_settings}
+
+    # ── Phase 2: training setup (uses the now-final cfg) ─────────────────────
     timesteps   = int(cfg.get("timesteps", 300_000))
     latest_path = _latest_path(cfg)
     os.makedirs(_model_dir(cfg), exist_ok=True)
 
     curriculum_mgr = _make_curriculum(cfg)
-
-    W, H = 1600, 950
+    bc_path_vis    = cfg.get("init_from_bc", None)
 
     print(f"\n{'='*55}")
     print(f"  ToyUAV RL — Live Training Dashboard")
@@ -652,22 +705,17 @@ def train_visual(cfg: dict):
         print(f"  Curriculum : AUTO  (start={curriculum_mgr.stage_name})")
     else:
         print(f"  Phase      : {cfg.get('curriculum_phase', 'mixed')}  (static)")
+    if bc_path_vis:
+        print(f"  BC init    : {bc_path_vis}")
     print(f"  Window     : {W}×{H}")
     print(f"  Save path  : {latest_path}.zip")
     print(f"{'='*55}\n")
 
-    pygame.init()
-    pygame.display.set_mode((W, H))
-    pygame.display.set_caption("ToyUAV RL — Live Training Dashboard")
-    clock    = pygame.time.Clock()
-    renderer = Renderer(W, H)
-    font     = pygame.font.SysFont("Consolas", 26)
-
     stop_event = threading.Event()
 
     def _training_thread():
-        env   = _make_env(cfg, curriculum_mgr)
-        model = _build_model(env, cfg, latest_path)
+        env      = _make_env(cfg, curriculum_mgr)
+        model    = _build_model(env, cfg, latest_path)
         callback = LiveCallback(ss, cfg)
 
         remaining = timesteps
@@ -693,6 +741,7 @@ def train_visual(cfg: dict):
 
     print("[TRAIN] Window open. F1-F4 = camera modes. ESC = quit.")
 
+    # ── Phase 3: dashboard event loop ─────────────────────────────────────────
     while True:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -728,6 +777,370 @@ def train_visual(cfg: dict):
         clock.tick(60)
 
 
+# ══════════════════════════════════════════════════════ pipeline ══════════════
+
+_ALL_RECORD_PHASES = [
+    "stabilize", "altitude_hold", "heading_hold",
+    "waypoint", "loiter", "approach", "landing",
+]
+
+
+def _record_phase_visual(cfg: dict, ss) -> str:
+    """
+    Phase 1: teacher flies and records demos; writes shared_state each step.
+    Records N episodes per phase for every selected phase, saving one combined .npz.
+    """
+    import time
+    from envs.fixed_wing_env import FixedWingEnv
+    from controllers.teacher_autopilot import TeacherAutopilot
+
+    record_phases_cfg = cfg.get("record_phases", "all")
+    if record_phases_cfg == "all":
+        phases_to_record = _ALL_RECORD_PHASES
+    else:
+        phases_to_record = [record_phases_cfg]
+
+    n_ep     = int(cfg.get("record_episodes", 100))   # per phase
+    seed     = int(cfg.get("record_seed", 0))
+    demo_dir = cfg.get("demo_dir", "results/demos")
+    teacher  = TeacherAutopilot()
+
+    all_obs, all_actions, all_phase_ids, all_rewards, all_dones = [], [], [], [], []
+    total_steps = 0
+    total_episodes = len(phases_to_record) * n_ep
+    ep_global = 0
+    _VIS_EVERY = 10
+
+    for phase in phases_to_record:
+        # Always create a curriculum manager so the env uses phase-appropriate
+        # difficulty (±7° roll for stabilize, etc.) instead of _DEFAULT_DIFF (±57°).
+        from sim.curriculum import CurriculumManager
+        curriculum_mgr = CurriculumManager(start_stage=phase,
+                                           save_path=None)
+        env = FixedWingEnv(training_mode=True,
+                           curriculum_phase=phase,
+                           curriculum_manager=curriculum_mgr)
+        phase_crashes = phase_success = 0
+
+        for ep in range(n_ep):
+            obs, _ = env.reset(seed=(seed + ep_global) if seed >= 0 else None)
+            done = truncated = False
+
+            while not (done or truncated):
+                s = env._state
+                t = env._target
+                action = teacher.act(obs, phase, target=t)
+                next_obs, reward, done, truncated, info = env.step(action)
+
+                all_obs.append(obs.copy())
+                all_actions.append(action.copy())
+                all_phase_ids.append(int(env._mode))
+                all_rewards.append(float(reward))
+                all_dones.append(bool(done or truncated))
+
+                if total_steps % _VIS_EVERY == 0:
+                    patch = {
+                        "pos":          s.pos.tolist(),
+                        "vel":          s.vel.tolist(),
+                        "pitch":        float(s.pitch),
+                        "roll":         float(s.roll),
+                        "yaw":          float(s.yaw),
+                        "pitch_rate":   float(s.pitch_rate),
+                        "roll_rate":    float(s.roll_rate),
+                        "yaw_rate":     float(s.yaw_rate),
+                        "throttle_pos": float(s.throttle_pos),
+                        "airspeed":     float(s.airspeed),
+                        "elevator":     float(action[0]),
+                        "aileron":      float(action[1]),
+                        "rudder":       float(action[2]),
+                        "mode":         int(env._mode),
+                        "reward":       float(reward),
+                        "episode_count": ep_global + 1,
+                        "timesteps":    total_steps,
+                        "success_rate": phase_success / max(ep, 1),
+                        "crash_rate":   phase_crashes / max(ep, 1),
+                        "pipeline_phase_label":
+                            f"[1/3] RECORDING  {phase}  "
+                            f"ep {ep+1}/{n_ep}  "
+                            f"({phases_to_record.index(phase)+1}/{len(phases_to_record)} phases)",
+                        "ready": True,
+                    }
+                    if t is not None:
+                        patch.update({
+                            "target_position": t.position.tolist(),
+                            "target_heading":  float(t.heading),
+                            "target_altitude": float(t.altitude),
+                            "target_radius":   float(t.radius),
+                        })
+                    ss.update(patch)
+
+                traj_ctr = total_steps % 4
+                if traj_ctr == 0:
+                    ss.push_history("trajectory", s.pos.tolist())
+
+                time.sleep(0)
+                obs = next_obs
+                total_steps += 1
+
+            crashed = info.get("crashed", False)
+            phase_crashes += int(crashed)
+            phase_success += int(not crashed)
+            ep_global += 1
+            if crashed:
+                ss.push_event(f"CRASH ({phase})", (255, 60, 60))
+
+        env.close()
+        print(f"[PIPELINE] {phase}: {n_ep} eps, {phase_success} ok, {phase_crashes} crashes")
+        ss.push_event(f"{phase} done", (0, 200, 120))
+
+    os.makedirs(demo_dir, exist_ok=True)
+    tag = "all" if len(phases_to_record) > 1 else phases_to_record[0]
+    idx = 1
+    while os.path.exists(os.path.join(demo_dir, f"{tag}_demo_{idx:03d}.npz")):
+        idx += 1
+    path = os.path.join(demo_dir, f"{tag}_demo_{idx:03d}.npz")
+    np.savez(path,
+             obs=np.array(all_obs,        dtype=np.float32),
+             actions=np.array(all_actions,    dtype=np.float32),
+             phases=np.array(all_phase_ids,   dtype=np.int32),
+             rewards=np.array(all_rewards,    dtype=np.float32),
+             dones=np.array(all_dones,        dtype=bool))
+    print(f"[PIPELINE] Demos saved -> {path}  ({total_steps:,} steps, {ep_global} episodes)")
+    return path
+
+
+def _bc_phase_visual(cfg: dict, demo_path: str, out_path: str, ss) -> str:
+    """Phase 2: behavioral cloning; writes loss to shared_state each epoch."""
+    import torch
+    import torch.nn.functional as F
+    from stable_baselines3 import PPO
+    from stable_baselines3.common.vec_env import DummyVecEnv
+    from envs.fixed_wing_env import FixedWingEnv
+    from ml.train_behavior_clone import load_demos
+
+    phase      = cfg.get("curriculum_phase", "stabilize")
+    epochs     = int(cfg.get("bc_epochs",     60))
+    batch_size = int(cfg.get("bc_batch_size", 512))
+    lr         = float(cfg.get("bc_lr",       1e-3))
+    val_frac   = 0.10
+
+    obs_all, act_all = load_demos([demo_path])
+    n     = len(obs_all)
+    perm  = np.random.permutation(n)
+    obs_all = obs_all[perm]; act_all = act_all[perm]
+    split   = int(n * (1.0 - val_frac))
+    obs_tr, act_tr = obs_all[:split], act_all[:split]
+    obs_vl, act_vl = obs_all[split:], act_all[split:]
+
+    print(f"[PIPELINE] BC: {n:,} steps  train {split:,}  val {n-split:,}")
+
+    vec_env = DummyVecEnv(
+        [lambda: FixedWingEnv(training_mode=True, curriculum_phase=phase)])
+    model  = PPO("MlpPolicy", vec_env,
+                 policy_kwargs=dict(net_arch=[256, 256]), verbose=0)
+    policy = model.policy
+    optim  = torch.optim.Adam(policy.parameters(), lr=lr)
+    sched  = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=epochs)
+
+    obs_t_tr = torch.FloatTensor(obs_tr); act_t_tr = torch.FloatTensor(act_tr)
+    obs_t_vl = torch.FloatTensor(obs_vl); act_t_vl = torch.FloatTensor(act_vl)
+    best_val = float("inf")
+
+    for epoch in range(1, epochs + 1):
+        policy.train()
+        perm_ep = torch.randperm(len(obs_t_tr))
+        ep_losses = []
+        for start in range(0, len(obs_t_tr), batch_size):
+            idx  = perm_ep[start:start + batch_size]
+            dist = policy.get_distribution(obs_t_tr[idx])
+            pred = dist.distribution.mean
+            loss = F.mse_loss(pred, act_t_tr[idx])
+            optim.zero_grad(); loss.backward()
+            torch.nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
+            optim.step()
+            ep_losses.append(loss.item())
+        sched.step()
+
+        policy.eval()
+        with torch.no_grad():
+            val_pred = policy.get_distribution(obs_t_vl).distribution.mean
+            val_loss = F.mse_loss(val_pred, act_t_vl).item()
+
+        train_loss = float(np.mean(ep_losses))
+        ss.update({
+            "pipeline_phase_label":
+                f"[2/3] BEHAVIOR CLONING  epoch {epoch}/{epochs}  "
+                f"train {train_loss:.4f}  val {val_loss:.4f}",
+            "policy_loss":   train_loss,
+            "value_loss":    val_loss,
+            "timesteps":     epoch,
+            "episode_count": epoch,
+            "ready":         True,
+        })
+        ss.push_history("policy_loss", abs(train_loss))
+        ss.push_history("value_loss",  val_loss)
+
+        if val_loss < best_val:
+            best_val = val_loss
+            os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+            model.save(out_path)
+
+    vec_env.close()
+    print(f"[PIPELINE] BC done  val MSE {best_val:.4f}  -> {out_path}.zip")
+    return out_path
+
+
+def train_pipeline_visual(cfg: dict):
+    """
+    Full teacher→BC→PPO pipeline with live pygame visualization.
+
+    Phase 1: Teacher autopilot flies and records demos (shown in 3D view).
+    Phase 2: Behavior cloning from those demos (loss shown in graphs).
+    Phase 3: PPO fine-tunes from BC weights (full telemetry dashboard).
+    """
+    import sys
+    import threading
+    import pygame
+    import shared_state as ss
+    from render.pygame_renderer import Renderer
+
+    W, H = 1600, 950
+    pygame.init()
+    pygame.display.set_mode((W, H))
+    pygame.display.set_caption("ToyUAV RL — Training Pipeline")
+    clock    = pygame.time.Clock()
+    renderer = Renderer(W, H)
+    font_msg = pygame.font.SysFont("Consolas", 22)
+
+    phase    = cfg.get("curriculum_phase", "stabilize")
+    demo_dir = cfg.get("demo_dir", "results/demos")
+    _demo_base = os.path.splitext(os.path.basename(cfg.get("demo_path", "")))[0]
+    _phase_tag = _demo_base.split("_demo_")[0] if "_demo_" in _demo_base else phase
+    bc_out   = os.path.join("models", "bc", f"{_phase_tag}_bc")
+
+    def _handle_events():
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit(); sys.exit(0)
+            elif event.type == pygame.KEYDOWN:
+                k = event.key
+                if k in (pygame.K_ESCAPE, pygame.K_q):
+                    pygame.quit(); sys.exit(0)
+                elif k == pygame.K_F1: ss.update({"camera_mode": 0})
+                elif k == pygame.K_F2: ss.update({"camera_mode": 1})
+                elif k == pygame.K_F3: ss.update({"camera_mode": 2})
+                elif k == pygame.K_F4: ss.update({"camera_mode": 3})
+
+    def _run_bg(fn):
+        """Run fn() in a background thread; drive pygame until it finishes."""
+        result  = [None]
+        done_ev = threading.Event()
+        def _worker():
+            result[0] = fn()
+            done_ev.set()
+        threading.Thread(target=_worker, daemon=True).start()
+        while not done_ev.is_set():
+            _handle_events()
+            state = ss.read()
+            if state.get("ready"):
+                renderer.render_state(state)   # banner drawn inside, single flip
+            else:
+                scr = pygame.display.get_surface()
+                scr.fill((5, 8, 22))
+                lbl = str(state.get("pipeline_phase_label", "Initializing…"))
+                msg = font_msg.render(lbl, True, (180, 180, 255))
+                scr.blit(msg, (W // 2 - msg.get_width() // 2, H // 2))
+                pygame.display.flip()
+            clock.tick(60)
+        return result[0]
+
+    # ── Phase 1: record (or reuse existing demos) ────────────────────────────
+    existing_demo = cfg.get("demo_path", "").strip()
+    if existing_demo and os.path.exists(existing_demo):
+        demo_path = existing_demo
+        print(f"\n{'='*55}")
+        print(f"  PIPELINE Phase 1/3 — SKIPPED (reusing existing demos)")
+        print(f"  Demo: {demo_path}")
+        print(f"{'='*55}\n")
+        ss.update({"pipeline_phase_label": f"[1/3] SKIPPED — using {os.path.basename(demo_path)}",
+                   "ready": True})
+        ss.push_event(f"Reusing: {os.path.basename(demo_path)}", (0, 255, 120))
+    else:
+        print(f"\n{'='*55}")
+        print(f"  PIPELINE Phase 1/3 — Recording teacher demos")
+        print(f"  Phase: {phase}  Episodes: {cfg.get('record_episodes', 500)}")
+        print(f"{'='*55}\n")
+        demo_path = _run_bg(lambda: _record_phase_visual(cfg, ss))
+        ss.push_event("RECORDING COMPLETE", (0, 255, 120))
+
+    # ── Phase 2: behavior clone (or reuse existing BC model) ─────────────────
+    existing_bc = cfg.get("bc_model_path", "").strip()
+    existing_bc_base = existing_bc[:-4] if existing_bc.endswith(".zip") else existing_bc
+    if existing_bc and os.path.exists(existing_bc):
+        bc_out = existing_bc_base
+        print(f"\n{'='*55}")
+        print(f"  PIPELINE Phase 2/3 — SKIPPED (reusing existing BC model)")
+        print(f"  BC model: {existing_bc}")
+        print(f"{'='*55}\n")
+        ss.update({"pipeline_phase_label": f"[2/3] SKIPPED — using {os.path.basename(existing_bc)}",
+                   "ready": True})
+        ss.push_event(f"BC reused: {os.path.basename(existing_bc)}", (0, 255, 120))
+    else:
+        print(f"\n{'='*55}")
+        print(f"  PIPELINE Phase 2/3 — Behavior cloning")
+        print(f"  Demo: {demo_path}  Epochs: {cfg.get('bc_epochs', 60)}")
+        print(f"{'='*55}\n")
+        _run_bg(lambda: _bc_phase_visual(cfg, demo_path, bc_out, ss))
+        ss.push_event("BC COMPLETE", (0, 255, 120))
+
+    # ── Phase 3: PPO fine-tune ────────────────────────────────────────────────
+    print(f"\n{'='*55}")
+    print(f"  PIPELINE Phase 3/3 — PPO fine-tuning from BC weights")
+    print(f"  BC model: {bc_out}.zip")
+    print(f"{'='*55}\n")
+
+    cfg         = {**cfg, "init_from_bc": bc_out}
+    timesteps   = int(cfg.get("timesteps", 300_000))
+    latest_path = _latest_path(cfg)
+    os.makedirs(_model_dir(cfg), exist_ok=True)
+    curriculum_mgr = _make_curriculum(cfg)
+    stop_event     = threading.Event()
+
+    ss.update({"pipeline_phase_label": "[3/3] PPO FINE-TUNING — student learns from BC weights"})
+
+    def _ppo_thread():
+        env      = _make_env(cfg, curriculum_mgr)
+        model    = _build_model(env, cfg, latest_path)
+        callback = LiveCallback(ss, cfg)
+        remaining = timesteps
+        while remaining > 0 and not stop_event.is_set():
+            chunk = min(CHUNK_SIZE, remaining)
+            model.learn(total_timesteps=chunk, reset_num_timesteps=False,
+                        callback=callback)
+            remaining -= chunk
+        model.save(latest_path)
+        if curriculum_mgr is not None:
+            curriculum_mgr.save()
+        ss.update({"training_done": True})
+        ss.push_event("TRAINING COMPLETE", (0, 255, 120))
+        print(f"\n[PIPELINE] Done. Model -> {latest_path}.zip")
+
+    threading.Thread(target=_ppo_thread, daemon=True).start()
+
+    while True:
+        _handle_events()
+        state = ss.read()
+        if state.get("ready"):
+            renderer.render_state(state)   # banner drawn inside, single flip
+        else:
+            scr = pygame.display.get_surface()
+            scr.fill((5, 8, 22))
+            msg = font_msg.render("Initializing PPO…", True, (180, 180, 255))
+            scr.blit(msg, (W // 2 - msg.get_width() // 2, H // 2))
+            pygame.display.flip()
+        clock.tick(60)
+
+
 # legacy alias
 def train_live(cfg_or_ts=None):
     if isinstance(cfg_or_ts, dict):
@@ -742,6 +1155,19 @@ def train_live(cfg_or_ts=None):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--timesteps", type=int, default=300_000)
+    parser.add_argument("--timesteps",      type=int,   default=300_000)
+    parser.add_argument("--phase",          type=str,   default="mixed",
+                        help="curriculum_phase (e.g. waypoint)")
+    parser.add_argument("--init-from-bc",   type=str,   default=None,
+                        dest="init_from_bc",
+                        help="Path to BC .zip for warm-start (without .zip ext)")
     args = parser.parse_args()
-    train({"timesteps": args.timesteps})
+
+    cfg: dict = {
+        "timesteps":       str(args.timesteps),
+        "curriculum_phase": args.phase,
+    }
+    if args.init_from_bc:
+        cfg["init_from_bc"] = args.init_from_bc
+
+    train(cfg)

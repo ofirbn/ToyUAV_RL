@@ -1,0 +1,61 @@
+Prompt: prompts\change_to_teacher_student.txt 
+-------------------------------------------- 
+Done. Here's the full summary:
+
+---
+
+## Files Changed
+
+### New files
+
+| File | Purpose |
+|------|---------|
+| `controllers/__init__.py` | package |
+| `controllers/teacher_autopilot.py` | PID autopilot for all 8 modes |
+| `ml/__init__.py` | package |
+| `ml/record_teacher_dataset.py` | demo recorder CLI |
+| `ml/train_behavior_clone.py` | BC trainer CLI |
+
+### Modified files
+
+| File | What changed |
+|------|-------------|
+| `train.py` | Added `TeacherBlendWrapper`, BC warm-start in `_build_model`, teacher blend in `_make_env`, teacher telemetry in `LiveCallback`, updated `__main__` CLI |
+| `shared_state.py` | Added `teacher_action`, `student_action`, `control_source`, `teacher_blend`, `override_count`, `imitation_diff` defaults |
+| `render/pygame_renderer.py` | TEACHER / STUDENT panel in left panel (auto-hides when blend=0 and no overrides) |
+
+---
+
+## CLI workflow
+
+```bash
+# Step 1 — Record teacher demos
+python ml/record_teacher_dataset.py --phase waypoint --episodes 1000
+
+# Step 2 — Train BC (supervised actor imitation)
+python ml/train_behavior_clone.py --demo results/demos/waypoint_demo_001.npz
+
+# Step 3 — PPO warm-start from BC weights
+python train.py --phase waypoint --init-from-bc models/bc/waypoint_bc
+
+# Optional: teacher blend during PPO (30% teacher, 70% student)
+python train.py --phase waypoint --init-from-bc models/bc/waypoint_bc --teacher-blend 0.3
+
+# Optional: safety override only (student trains normally, teacher takes over when dangerous)
+python train.py --phase stabilize --teacher-safety
+```
+
+Or via `config.txt`:
+```
+init_from_bc=models/bc/waypoint_bc
+teacher_blend=0.3
+teacher_safety=true
+```
+
+---
+
+## Caveats
+
+- **Stabilize crash rate ~15–20%** at max perturbation difficulty — the teacher uses fixed PID gains tuned for typical conditions; very aggressive initial perturbations can exceed its authority. Record demos from the `stabilize` phase with default curriculum difficulty (not max) for cleaner BC data.
+- **Loiter quality** is negative-reward at first (orbit geometry is correct, but the reward function penalizes initial radius deviation). The teacher will get the aircraft into orbit; BC + PPO will refine it.
+- The teacher blend wrapper works with `DummyVecEnv` but is applied **after** PPO's action sampling, so gradient updates still train the full student. Blend is a runtime mix, not a gradient gate.

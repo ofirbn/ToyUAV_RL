@@ -1,0 +1,30 @@
+Prompt: prompts\improve_physics.txt 
+-------------------------------------------- 
+All changes are complete and verified. Here's a summary of what was done:
+
+---
+
+## What changed
+
+### `aircraft.py` — Physics overhaul
+- **`AircraftState`**: Added `elevator_pos`, `aileron_pos`, `rudder_pos` fields to track smoothed surface positions
+- **Actuator lag on surfaces** (LAG=1.0 s⁻¹): actual = 0.9×prev + 0.1×commanded per step — the single biggest fix for oscillation
+- **Reduced gains**: ELEV 2.0→0.8, AIL 3.5→1.5, RUDD 0.6→0.4 — less twitchy authority
+- **Stronger damping**: PITCH 1.8→4.0, ROLL 2.5→5.0, YAW 1.2→3.0 — rates decay quickly
+- **Stall nose-down**: 4.0 rad/s² pitching moment per radian past stall alpha — aircraft naturally recovers
+- Expected behavior: ~17 deg/s max roll rate, trim bank ~25° at full aileron, 2+ seconds to roll 45°
+
+### `render/pygame_renderer.py` — Three rendering bugs fixed
+- **Rotation matrix**: Was using wrong Euler convention — positive pitch rendered nose DOWN. Fixed to `R = Rz(yaw)·Rx(-pitch)·Ry(roll)` which correctly maps positive pitch→nose up, positive roll→right wing down
+- **Attitude indicator**: `px/py` had sin/cos swapped (wings-level showed a vertical horizon line). Fixed, plus `ox/oy` displacement corrected so pitch moves horizon down as expected
+- **Visual smoothing**: `_vis_roll/pitch/yaw` lerped 15%/frame for aircraft model and AI — eliminates flutter/butterfly effect while telemetry text shows raw values
+- **Camera**: SMOOTH 0.10→0.05 for smoother following
+
+### `sim/rewards.py` — Stronger rate penalties
+Stabilize: roll_rate penalized at 0.6×, pitch_rate at 0.4×, yaw_rate at 0.2× (was combined 0.1×). Small +airspeed reward added.
+
+### `sim/curriculum.py` — Gentler start conditions
+Stage 1 (stabilize): roll_perturb 1.2→0.25 rad (±68°→±14°), pitch_perturb 0.4→0.12 rad. Stage 2 (cruise): roll_perturb 1.2→0.5.
+
+### `train.py` — PPO metrics persistence
+`LiveCallback` now caches last non-zero PPO values in `_ppo_cache` so the panel shows real values during rollout collection instead of zeros.

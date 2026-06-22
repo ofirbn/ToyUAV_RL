@@ -1,0 +1,331 @@
+You are refining an already-successful fragility allocator + panic overlay system.
+
+IMPORTANT:
+- Do NOT redesign the architecture
+- Keep:
+  - fragility allocator
+  - panic overlay
+  - smoothing/hysteresis framework
+- Focus ONLY on refinement of:
+  - position sizing
+  - leverage scaling
+  - state transitions
+  - convexity-aware exposure
+  - compounding efficiency
+  - drawdown control
+
+Current system already achieves:
+- Calmar > 1.0
+- CAGR > 70%
+- improved COVID handling
+- strong panic response
+
+Goal now:
+Further improve:
+- MaxDD
+- CVaR
+- compounding smoothness
+- recovery efficiency
+- turnover efficiency
+
+WITHOUT materially harming:
+- CAGR
+- exposure efficiency
+
+===========================================================
+1. CREATE NEW MODULES
+===========================================================
+
+Create:
+
+- portfolio/dynamic_position_sizing.py
+- experiments/test_dynamic_sizing.py
+
+Reuse:
+- existing fragility allocator
+- existing panic overlay
+- existing backtest framework
+
+===========================================================
+2. MAIN OBJECTIVE
+===========================================================
+
+Current allocator uses:
+- discrete threshold mappings
+
+Problem:
+- abrupt exposure jumps
+- unnecessary switching
+- suboptimal leverage transitions
+
+New objective:
+Build CONTINUOUS DYNAMIC EXPOSURE SCALING.
+
+===========================================================
+3. CONTINUOUS EXPOSURE FUNCTION
+===========================================================
+
+Instead of discrete states:
+
+Use continuous exposure scaling:
+
+Examples:
+exposure = f(
+    fragility_score,
+    panic_score,
+    convexity_stress,
+    realized_volatility,
+    drawdown_state
+)
+
+Test multiple functional forms.
+
+==================================================
+A. LINEAR SCALING
+==================================================
+
+Example:
+higher fragility → linearly lower SOXL exposure
+
+==================================================
+B. NONLINEAR / SIGMOID SCALING
+==================================================
+
+Example:
+small fragility changes near danger zone
+cause larger leverage reduction.
+
+==================================================
+C. CONVEXITY-AWARE SCALING
+==================================================
+
+When:
+- gamma instability high
+- VIX acceleration high
+- dealer short-gamma proxy elevated
+
+Then:
+aggressively suppress leverage.
+
+==================================================
+D. VOLATILITY TARGETING
+==================================================
+
+Target rolling portfolio volatility.
+
+Examples:
+- reduce leverage during vol spikes
+- allow higher leverage during calm stable periods
+
+===========================================================
+4. EXPOSURE CONSTRAINTS
+===========================================================
+
+Test:
+- max SOXL caps
+- minimum defensive allocation
+- gradual re-risking
+- asymmetric de-risk vs re-risk speed
+
+Examples:
+- de-risk quickly
+- re-enter slowly
+
+===========================================================
+5. DRAWdown-AWARE POSITION SIZING
+===========================================================
+
+Add optional:
+- rolling drawdown sensitivity
+
+Examples:
+- after large portfolio drawdown:
+  temporarily reduce max leverage
+- recovery phase scaling
+- anti-martingale sizing
+
+Goal:
+avoid compounding large losses.
+
+===========================================================
+6. POSITION SMOOTHING REFINEMENT
+===========================================================
+
+Current smoothing exists.
+
+Now test:
+- adaptive EMA smoothing
+- volatility-adaptive smoothing
+- convexity-adaptive hysteresis
+- exposure momentum damping
+
+Goal:
+reduce unnecessary churn while preserving responsiveness.
+
+===========================================================
+7. ADVANCED PANIC OVERLAY REFINEMENT
+===========================================================
+
+Test:
+- partial panic scaling
+instead of binary defensive jumps.
+
+Examples:
+panic 0.5 → moderate leverage reduction
+panic 0.9 → aggressive defensive posture
+
+Also test:
+- panic decay curves
+- cooldown half-life
+- panic persistence weighting
+
+===========================================================
+8. BACKTEST EXPERIMENTS
+===========================================================
+
+Compare:
+
+A.
+Current best system
+
+vs
+
+B.
+Continuous dynamic sizing
+
+vs
+
+C.
+Convexity-aware sizing
+
+vs
+
+D.
+Vol-targeted sizing
+
+vs
+
+E.
+Hybrid combined sizing
+
+===========================================================
+9. STRESS TESTS
+===========================================================
+
+Analyze:
+- COVID 2020
+- 2022 drawdown
+- fastest 30 selloffs
+- volatility explosion periods
+- semiconductor crash windows
+
+Measure:
+- exposure reduction speed
+- recovery timing
+- whipsaw frequency
+- compounding damage reduction
+
+===========================================================
+10. METRICS
+===========================================================
+
+Compute:
+
+Performance:
+- CAGR
+- total return
+
+Risk:
+- MaxDD
+- CVaR
+- ulcer index
+- recovery duration
+- rolling worst-case loss
+
+Efficiency:
+- Calmar
+- Sharpe
+- Sortino
+
+Behavior:
+- turnover
+- average leverage
+- panic activations
+- exposure smoothness
+- re-risk delay
+- false defensive periods
+
+===========================================================
+11. IMPORTANT ANALYSIS
+===========================================================
+
+Specifically analyze:
+
+A.
+Does continuous sizing outperform threshold jumps?
+
+B.
+Does convexity-aware leverage materially help?
+
+C.
+Does gradual re-risking improve survivability?
+
+D.
+What is the best tradeoff between:
+- CAGR
+- MaxDD
+- turnover
+- compounding smoothness
+
+===========================================================
+12. OUTPUTS
+===========================================================
+
+Save under:
+results/dynamic_sizing/
+
+Including:
+- metrics_summary.csv
+- exposure_curves.csv
+- leverage_timeline.csv
+- drawdown_analysis.csv
+- stress_test_results.csv
+- turnover_analysis.csv
+- final_report.md
+
+Generate plots:
+- exposure vs fragility
+- exposure vs panic
+- leverage timeline
+- drawdown comparison
+- equity curves
+- convexity stress vs leverage
+
+===========================================================
+13. FINAL REPORT
+===========================================================
+
+Print:
+
+1. Best dynamic sizing method
+2. Best MaxDD reduction
+3. Calmar improvement
+4. Whether continuous sizing beats discrete mapping
+5. Whether convexity-aware leverage helps materially
+6. Whether gradual re-risking improves results
+7. Turnover impact
+8. Biggest remaining weakness
+9. Recommended next evolution step
+
+IMPORTANT:
+Optimize for:
+- long-term compounding
+- survivability
+- smooth risk-adjusted growth
+- robustness
+
+NOT:
+- maximum short-term leverage.
+
+Run the FULL experiment.
+Keep architecture interpretable and modular.

@@ -1,0 +1,20 @@
+Prompt: prompts\fix_wp_state_try2.txt 
+-------------------------------------------- 
+All changes are clean. Here's a summary of what was done and why:
+
+---
+
+**Root cause:** The telemetry pipeline was broken — `train.py`'s `LiveCallback._on_step()` never pushed any `wp_*` fields to `shared_state`, so the renderer perpetually read its unset defaults (`wp_state="approaching"`, `wp_captured_count=0`). Separately, `push_event("WAYPOINT REACHED")` fired on every episode end in WAYPOINT mode unconditionally — not gated on actual capture.
+
+**Changes made:**
+
+**`train.py`** (2 fixes):
+1. `push_event("WAYPOINT REACHED")` — now gated on `episode_success == True and mode == FlightMode.WAYPOINT`. Previously fired on every WP-mode episode end including crashes and timeouts.
+2. Added 11 `wp_*` fields to the `shared_state` patch: `wp_state`, `wp_capture_event`, `wp_captured_count`, `wp_transition_timer`, `wp_curr_dist`, `wp_arrived`, `wp_mission_idx`, `wp_leg_start_dist`, `wp_capture_eligible`, `wp_cooldown_active`, `wp_capture_threshold`.
+
+**`fixed_wing_env.py`** (2 additions):
+1. FSM transition logging: `[WP_FSM] APPROACHING -> TRANSITIONING`, `TRANSITIONING -> APPROACHING`, `wp_switch_event -> APPROACHING` — all with step number and distance.
+2. Added `wp_capture_threshold`, `wp_capture_eligible`, `wp_cooldown_active` to the `info` dict.
+
+**`render/pygame_renderer.py`** (1 addition):
+Added `ELIGIBLE` and `THRESHOLD` rows to the WAYPOINT INFO HUD panel so the capture gate is directly visible.

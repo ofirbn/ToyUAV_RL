@@ -1,0 +1,21 @@
+Prompt: prompts\add_curriculum.txt 
+-------------------------------------------- 
+All 11 upgrades are implemented and verified. Here's a summary of what changed:
+
+**New file:**
+- `sim/curriculum.py` — 8 phases (cruise→mixed), each adding more modes progressively
+
+**Modified files:**
+
+| File | Key changes |
+|------|-------------|
+| `envs/fixed_wing_env.py` | Obs space 27→31 (adds `prev_action` last 4 dims); curriculum mode filtering; stall penalty −5/step; 6 flight envelope penalties (roll/pitch/rates/sink); all exposed in `info["reward_breakdown"]` and `info["stall_warning"]` |
+| `sim/curriculum.py` | New — `get_active_modes(phase)` maps phase name → list of FlightMode |
+| `shared_state.py` | Added `stall_rate`, `best_success_rate`, `curriculum_phase`, 8 per-mode success rates, `stall` history buffer |
+| `train.py` | `train(cfg)` / `train_visual(cfg)` accept config dict; `LiveCallback` saves `best_reward.zip` + `best_success.zip` when stats improve; periodic `latest.zip` save; per-mode success/crash deques; stall_rate tracking; full mode-rate patch to shared_state |
+| `render/pygame_renderer.py` | Left panel: shows STALL%, BEST SUC%, CURRICULUM phase; 4th bottom graph changed to STALL RATE (was VALUE LOSS, now shows stall+policy/value together) |
+| `main.py` | Reads all new config keys; supports `train_visual` and `train_live` as mode aliases; passes full `cfg` dict to all subsystems |
+| `config.txt` | Full config with all new options at documented defaults |
+| `visualize.py` | Accepts `cfg` dict; tries multiple candidate model paths; passes curriculum/stall params to env |
+
+**Note on existing model:** The obs space changed from 27-D to 31-D, so `models/fixed_wing_multimode_ppo.zip` will be detected but can't load into the new env. `train.py` gracefully catches the error and starts a fresh model — training will restart from scratch with all the new features.

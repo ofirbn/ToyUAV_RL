@@ -1,0 +1,1290 @@
+{
+  "crash_type": "GROUND_IMPACT",
+  "mode": "APPROACH",
+  "timestamp": "20260621_135150",
+  "final_state": {
+    "pos": [
+      -255.393608057326,
+      -352.0489145704221,
+      -1.034111394838761
+    ],
+    "airspeed": 14.7,
+    "roll_deg": 10.7,
+    "pitch_deg": -6.1,
+    "yaw_deg": 300.0,
+    "roll_rate_rad_s": 0.071,
+    "pitch_rate_rad_s": -0.022
+  },
+  "episode_metrics": {
+    "ctrl_osc_ep_mean": 0.0581,
+    "stalled_this_ep": false,
+    "altitude_error": -22.0
+  },
+  "reward_breakdown": {
+    "crash": -50.0,
+    "smoothness": -0.0622,
+    "saturation": -0.1268
+  },
+  "telemetry": [
+    {
+      "step": 260,
+      "pos": [
+        -179.3,
+        -317.6,
+        3.0
+      ],
+      "airspeed": 11.33,
+      "roll_deg": 4.8,
+      "pitch_deg": 0.4,
+      "yaw_deg": 295.6,
+      "roll_rate": -0.088,
+      "pitch_rate": 0.022,
+      "vz": -1.04,
+      "action": [
+        1.0,
+        -1.0,
+        0.359,
+        1.0
+      ]
+    },
+    {
+      "step": 261,
+      "pos": [
+        -180.3,
+        -318.0,
+        2.9
+      ],
+      "airspeed": 11.39,
+      "roll_deg": 4.2,
+      "pitch_deg": 0.5,
+      "yaw_deg": 296.1,
+      "roll_rate": -0.092,
+      "pitch_rate": 0.023,
+      "vz": -1.0,
+      "action": [
+        0.588,
+        -1.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 262,
+      "pos": [
+        -181.4,
+        -318.4,
+        2.8
+      ],
+      "airspeed": 11.46,
+      "roll_deg": 3.7,
+      "pitch_deg": 0.7,
+      "yaw_deg": 296.5,
+      "roll_rate": -0.095,
+      "pitch_rate": 0.025,
+      "vz": -0.96,
+      "action": [
+        1.0,
+        -1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 263,
+      "pos": [
+        -182.5,
+        -318.8,
+        2.7
+      ],
+      "airspeed": 11.53,
+      "roll_deg": 3.1,
+      "pitch_deg": 0.8,
+      "yaw_deg": 296.8,
+      "roll_rate": -0.099,
+      "pitch_rate": 0.023,
+      "vz": -0.91,
+      "action": [
+        -0.066,
+        -1.0,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 264,
+      "pos": [
+        -183.5,
+        -319.3,
+        2.6
+      ],
+      "airspeed": 11.62,
+      "roll_deg": 2.5,
+      "pitch_deg": 0.9,
+      "yaw_deg": 297.1,
+      "roll_rate": -0.103,
+      "pitch_rate": 0.024,
+      "vz": -0.87,
+      "action": [
+        1.0,
+        -1.0,
+        -0.937,
+        1.0
+      ]
+    },
+    {
+      "step": 265,
+      "pos": [
+        -184.6,
+        -319.7,
+        2.5
+      ],
+      "airspeed": 11.71,
+      "roll_deg": 1.9,
+      "pitch_deg": 1.1,
+      "yaw_deg": 297.4,
+      "roll_rate": -0.105,
+      "pitch_rate": 0.026,
+      "vz": -0.81,
+      "action": [
+        1.0,
+        -0.752,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 266,
+      "pos": [
+        -185.7,
+        -320.2,
+        2.4
+      ],
+      "airspeed": 11.81,
+      "roll_deg": 1.3,
+      "pitch_deg": 1.2,
+      "yaw_deg": 297.6,
+      "roll_rate": -0.106,
+      "pitch_rate": 0.023,
+      "vz": -0.76,
+      "action": [
+        -1.0,
+        -0.556,
+        -0.231,
+        1.0
+      ]
+    },
+    {
+      "step": 267,
+      "pos": [
+        -186.8,
+        -320.7,
+        2.4
+      ],
+      "airspeed": 11.93,
+      "roll_deg": 0.7,
+      "pitch_deg": 1.3,
+      "yaw_deg": 297.7,
+      "roll_rate": -0.106,
+      "pitch_rate": 0.021,
+      "vz": -0.7,
+      "action": [
+        0.34,
+        -0.578,
+        -0.716,
+        1.0
+      ]
+    },
+    {
+      "step": 268,
+      "pos": [
+        -187.9,
+        -321.2,
+        2.3
+      ],
+      "airspeed": 12.04,
+      "roll_deg": 0.1,
+      "pitch_deg": 1.5,
+      "yaw_deg": 297.8,
+      "roll_rate": -0.107,
+      "pitch_rate": 0.022,
+      "vz": -0.65,
+      "action": [
+        1.0,
+        -0.773,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 269,
+      "pos": [
+        -189.0,
+        -321.7,
+        2.2
+      ],
+      "airspeed": 12.17,
+      "roll_deg": -0.5,
+      "pitch_deg": 1.6,
+      "yaw_deg": 297.8,
+      "roll_rate": -0.105,
+      "pitch_rate": 0.019,
+      "vz": -0.59,
+      "action": [
+        -0.855,
+        -0.271,
+        -0.915,
+        1.0
+      ]
+    },
+    {
+      "step": 270,
+      "pos": [
+        -190.1,
+        -322.2,
+        2.2
+      ],
+      "airspeed": 12.31,
+      "roll_deg": -1.1,
+      "pitch_deg": 1.7,
+      "yaw_deg": 297.8,
+      "roll_rate": -0.104,
+      "pitch_rate": 0.02,
+      "vz": -0.53,
+      "action": [
+        1.0,
+        -0.41,
+        -0.442,
+        1.0
+      ]
+    },
+    {
+      "step": 271,
+      "pos": [
+        -191.2,
+        -322.7,
+        2.1
+      ],
+      "airspeed": 12.45,
+      "roll_deg": -1.7,
+      "pitch_deg": 1.8,
+      "yaw_deg": 297.8,
+      "roll_rate": -0.102,
+      "pitch_rate": 0.021,
+      "vz": -0.46,
+      "action": [
+        0.668,
+        -0.398,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 272,
+      "pos": [
+        -192.4,
+        -323.2,
+        2.1
+      ],
+      "airspeed": 12.6,
+      "roll_deg": -2.2,
+      "pitch_deg": 1.9,
+      "yaw_deg": 297.7,
+      "roll_rate": -0.095,
+      "pitch_rate": 0.018,
+      "vz": -0.4,
+      "action": [
+        -0.344,
+        0.733,
+        0.685,
+        1.0
+      ]
+    },
+    {
+      "step": 273,
+      "pos": [
+        -193.5,
+        -323.8,
+        2.1
+      ],
+      "airspeed": 12.75,
+      "roll_deg": -2.7,
+      "pitch_deg": 2.0,
+      "yaw_deg": 297.5,
+      "roll_rate": -0.086,
+      "pitch_rate": 0.013,
+      "vz": -0.34,
+      "action": [
+        -1.0,
+        0.888,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 274,
+      "pos": [
+        -194.7,
+        -324.3,
+        2.0
+      ],
+      "airspeed": 12.91,
+      "roll_deg": -3.2,
+      "pitch_deg": 2.0,
+      "yaw_deg": 297.4,
+      "roll_rate": -0.078,
+      "pitch_rate": 0.008,
+      "vz": -0.27,
+      "action": [
+        -1.0,
+        0.145,
+        0.796,
+        1.0
+      ]
+    },
+    {
+      "step": 275,
+      "pos": [
+        -195.9,
+        -324.9,
+        2.0
+      ],
+      "airspeed": 13.07,
+      "roll_deg": -3.5,
+      "pitch_deg": 2.0,
+      "yaw_deg": 297.1,
+      "roll_rate": -0.068,
+      "pitch_rate": 0.002,
+      "vz": -0.22,
+      "action": [
+        -0.824,
+        0.759,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 276,
+      "pos": [
+        -197.1,
+        -325.5,
+        2.0
+      ],
+      "airspeed": 13.23,
+      "roll_deg": -3.9,
+      "pitch_deg": 2.0,
+      "yaw_deg": 296.9,
+      "roll_rate": -0.059,
+      "pitch_rate": -0.004,
+      "vz": -0.17,
+      "action": [
+        -0.848,
+        0.32,
+        -0.138,
+        1.0
+      ]
+    },
+    {
+      "step": 277,
+      "pos": [
+        -198.3,
+        -326.0,
+        2.0
+      ],
+      "airspeed": 13.4,
+      "roll_deg": -4.2,
+      "pitch_deg": 2.0,
+      "yaw_deg": 296.6,
+      "roll_rate": -0.049,
+      "pitch_rate": -0.008,
+      "vz": -0.12,
+      "action": [
+        -0.566,
+        0.659,
+        0.432,
+        1.0
+      ]
+    },
+    {
+      "step": 278,
+      "pos": [
+        -199.5,
+        -326.6,
+        2.0
+      ],
+      "airspeed": 13.56,
+      "roll_deg": -4.4,
+      "pitch_deg": 1.9,
+      "yaw_deg": 296.3,
+      "roll_rate": -0.037,
+      "pitch_rate": -0.013,
+      "vz": -0.08,
+      "action": [
+        -1.0,
+        1.0,
+        0.918,
+        1.0
+      ]
+    },
+    {
+      "step": 279,
+      "pos": [
+        -200.8,
+        -327.2,
+        2.0
+      ],
+      "airspeed": 13.72,
+      "roll_deg": -4.5,
+      "pitch_deg": 1.8,
+      "yaw_deg": 296.0,
+      "roll_rate": -0.025,
+      "pitch_rate": -0.019,
+      "vz": -0.05,
+      "action": [
+        -1.0,
+        1.0,
+        -0.097,
+        1.0
+      ]
+    },
+    {
+      "step": 280,
+      "pos": [
+        -202.0,
+        -327.8,
+        2.0
+      ],
+      "airspeed": 13.88,
+      "roll_deg": -4.6,
+      "pitch_deg": 1.6,
+      "yaw_deg": 295.7,
+      "roll_rate": -0.013,
+      "pitch_rate": -0.024,
+      "vz": -0.03,
+      "action": [
+        -1.0,
+        0.8,
+        -0.261,
+        1.0
+      ]
+    },
+    {
+      "step": 281,
+      "pos": [
+        -203.3,
+        -328.4,
+        2.0
+      ],
+      "airspeed": 14.03,
+      "roll_deg": -4.6,
+      "pitch_deg": 1.5,
+      "yaw_deg": 295.4,
+      "roll_rate": 0.0,
+      "pitch_rate": -0.029,
+      "vz": -0.02,
+      "action": [
+        -1.0,
+        1.0,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 282,
+      "pos": [
+        -204.6,
+        -329.0,
+        2.0
+      ],
+      "airspeed": 14.18,
+      "roll_deg": -4.5,
+      "pitch_deg": 1.3,
+      "yaw_deg": 295.1,
+      "roll_rate": 0.013,
+      "pitch_rate": -0.033,
+      "vz": -0.01,
+      "action": [
+        -1.0,
+        1.0,
+        0.236,
+        1.0
+      ]
+    },
+    {
+      "step": 283,
+      "pos": [
+        -205.9,
+        -329.6,
+        2.0
+      ],
+      "airspeed": 14.32,
+      "roll_deg": -4.4,
+      "pitch_deg": 1.1,
+      "yaw_deg": 294.8,
+      "roll_rate": 0.027,
+      "pitch_rate": -0.038,
+      "vz": -0.02,
+      "action": [
+        -1.0,
+        1.0,
+        0.081,
+        1.0
+      ]
+    },
+    {
+      "step": 284,
+      "pos": [
+        -207.2,
+        -330.2,
+        2.0
+      ],
+      "airspeed": 14.46,
+      "roll_deg": -4.1,
+      "pitch_deg": 0.8,
+      "yaw_deg": 294.4,
+      "roll_rate": 0.04,
+      "pitch_rate": -0.041,
+      "vz": -0.03,
+      "action": [
+        -1.0,
+        1.0,
+        0.145,
+        1.0
+      ]
+    },
+    {
+      "step": 285,
+      "pos": [
+        -208.5,
+        -330.8,
+        2.0
+      ],
+      "airspeed": 14.58,
+      "roll_deg": -3.8,
+      "pitch_deg": 0.6,
+      "yaw_deg": 294.2,
+      "roll_rate": 0.052,
+      "pitch_rate": -0.044,
+      "vz": -0.05,
+      "action": [
+        -0.812,
+        1.0,
+        0.341,
+        1.0
+      ]
+    },
+    {
+      "step": 286,
+      "pos": [
+        -209.9,
+        -331.4,
+        1.9
+      ],
+      "airspeed": 14.7,
+      "roll_deg": -3.5,
+      "pitch_deg": 0.3,
+      "yaw_deg": 293.9,
+      "roll_rate": 0.064,
+      "pitch_rate": -0.046,
+      "vz": -0.08,
+      "action": [
+        -1.0,
+        0.893,
+        -0.17,
+        1.0
+      ]
+    },
+    {
+      "step": 287,
+      "pos": [
+        -211.2,
+        -332.0,
+        1.9
+      ],
+      "airspeed": 14.81,
+      "roll_deg": -3.0,
+      "pitch_deg": 0.0,
+      "yaw_deg": 293.6,
+      "roll_rate": 0.075,
+      "pitch_rate": -0.048,
+      "vz": -0.12,
+      "action": [
+        -1.0,
+        1.0,
+        -0.571,
+        1.0
+      ]
+    },
+    {
+      "step": 288,
+      "pos": [
+        -212.6,
+        -332.6,
+        1.9
+      ],
+      "airspeed": 14.9,
+      "roll_deg": -2.6,
+      "pitch_deg": -0.2,
+      "yaw_deg": 293.4,
+      "roll_rate": 0.082,
+      "pitch_rate": -0.05,
+      "vz": -0.17,
+      "action": [
+        -1.0,
+        0.665,
+        -0.492,
+        1.0
+      ]
+    },
+    {
+      "step": 289,
+      "pos": [
+        -213.9,
+        -333.2,
+        1.9
+      ],
+      "airspeed": 14.99,
+      "roll_deg": -2.1,
+      "pitch_deg": -0.5,
+      "yaw_deg": 293.2,
+      "roll_rate": 0.078,
+      "pitch_rate": -0.052,
+      "vz": -0.22,
+      "action": [
+        -1.0,
+        -0.398,
+        0.192,
+        1.0
+      ]
+    },
+    {
+      "step": 290,
+      "pos": [
+        -215.3,
+        -333.8,
+        1.9
+      ],
+      "airspeed": 15.07,
+      "roll_deg": -1.6,
+      "pitch_deg": -0.8,
+      "yaw_deg": 293.0,
+      "roll_rate": 0.083,
+      "pitch_rate": -0.045,
+      "vz": -0.27,
+      "action": [
+        0.504,
+        1.0,
+        0.184,
+        1.0
+      ]
+    },
+    {
+      "step": 291,
+      "pos": [
+        -216.7,
+        -334.4,
+        1.8
+      ],
+      "airspeed": 15.14,
+      "roll_deg": -1.1,
+      "pitch_deg": -1.1,
+      "yaw_deg": 292.9,
+      "roll_rate": 0.09,
+      "pitch_rate": -0.044,
+      "vz": -0.33,
+      "action": [
+        -1.0,
+        1.0,
+        0.642,
+        1.0
+      ]
+    },
+    {
+      "step": 292,
+      "pos": [
+        -218.1,
+        -335.0,
+        1.8
+      ],
+      "airspeed": 15.19,
+      "roll_deg": -0.6,
+      "pitch_deg": -1.3,
+      "yaw_deg": 292.8,
+      "roll_rate": 0.093,
+      "pitch_rate": -0.045,
+      "vz": -0.38,
+      "action": [
+        -1.0,
+        0.41,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 293,
+      "pos": [
+        -219.5,
+        -335.6,
+        1.8
+      ],
+      "airspeed": 15.24,
+      "roll_deg": -0.1,
+      "pitch_deg": -1.5,
+      "yaw_deg": 292.7,
+      "roll_rate": 0.083,
+      "pitch_rate": -0.038,
+      "vz": -0.44,
+      "action": [
+        0.902,
+        -1.0,
+        0.174,
+        1.0
+      ]
+    },
+    {
+      "step": 294,
+      "pos": [
+        -220.9,
+        -336.2,
+        1.7
+      ],
+      "airspeed": 15.29,
+      "roll_deg": 0.3,
+      "pitch_deg": -1.7,
+      "yaw_deg": 292.7,
+      "roll_rate": 0.068,
+      "pitch_rate": -0.028,
+      "vz": -0.49,
+      "action": [
+        0.775,
+        -0.764,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 295,
+      "pos": [
+        -222.3,
+        -336.8,
+        1.7
+      ],
+      "airspeed": 15.32,
+      "roll_deg": 0.6,
+      "pitch_deg": -1.8,
+      "yaw_deg": 292.7,
+      "roll_rate": 0.06,
+      "pitch_rate": -0.027,
+      "vz": -0.53,
+      "action": [
+        -1.0,
+        0.132,
+        0.737,
+        1.0
+      ]
+    },
+    {
+      "step": 296,
+      "pos": [
+        -223.7,
+        -337.4,
+        1.6
+      ],
+      "airspeed": 15.35,
+      "roll_deg": 0.9,
+      "pitch_deg": -2.0,
+      "yaw_deg": 292.7,
+      "roll_rate": 0.057,
+      "pitch_rate": -0.029,
+      "vz": -0.57,
+      "action": [
+        -1.0,
+        0.319,
+        -1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 297,
+      "pos": [
+        -225.1,
+        -338.1,
+        1.5
+      ],
+      "airspeed": 15.38,
+      "roll_deg": 1.2,
+      "pitch_deg": -2.1,
+      "yaw_deg": 292.7,
+      "roll_rate": 0.055,
+      "pitch_rate": -0.023,
+      "vz": -0.61,
+      "action": [
+        1.0,
+        0.192,
+        -0.392,
+        1.0
+      ]
+    },
+    {
+      "step": 298,
+      "pos": [
+        -226.5,
+        -338.7,
+        1.5
+      ],
+      "airspeed": 15.4,
+      "roll_deg": 1.5,
+      "pitch_deg": -2.3,
+      "yaw_deg": 292.8,
+      "roll_rate": 0.05,
+      "pitch_rate": -0.023,
+      "vz": -0.64,
+      "action": [
+        -1.0,
+        -0.09,
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "step": 299,
+      "pos": [
+        -228.0,
+        -339.3,
+        1.4
+      ],
+      "airspeed": 15.41,
+      "roll_deg": 1.8,
+      "pitch_deg": -2.4,
+      "yaw_deg": 292.9,
+      "roll_rate": 0.052,
+      "pitch_rate": -0.025,
+      "vz": -0.68,
+      "action": [
+        -1.0,
+        0.693,
+        -0.179,
+        1.0
+      ]
+    },
+    {
+      "step": 300,
+      "pos": [
+        -229.4,
+        -339.9,
+        1.3
+      ],
+      "airspeed": 15.42,
+      "roll_deg": 2.2,
+      "pitch_deg": -2.6,
+      "yaw_deg": 293.0,
+      "roll_rate": 0.059,
+      "pitch_rate": -0.028,
+      "vz": -0.71,
+      "action": [
+        -1.0,
+        1.0,
+        -0.56,
+        1.0
+      ]
+    },
+    {
+      "step": 301,
+      "pos": [
+        -230.8,
+        -340.5,
+        1.3
+      ],
+      "airspeed": 15.43,
+      "roll_deg": 2.5,
+      "pitch_deg": -2.7,
+      "yaw_deg": 293.1,
+      "roll_rate": 0.068,
+      "pitch_rate": -0.03,
+      "vz": -0.75,
+      "action": [
+        -1.0,
+        1.0,
+        0.402,
+        1.0
+      ]
+    },
+    {
+      "step": 302,
+      "pos": [
+        -232.2,
+        -341.1,
+        1.2
+      ],
+      "airspeed": 15.43,
+      "roll_deg": 3.0,
+      "pitch_deg": -2.9,
+      "yaw_deg": 293.2,
+      "roll_rate": 0.07,
+      "pitch_rate": -0.032,
+      "vz": -0.8,
+      "action": [
+        -1.0,
+        0.323,
+        -0.008,
+        1.0
+      ]
+    },
+    {
+      "step": 303,
+      "pos": [
+        -233.6,
+        -341.7,
+        1.1
+      ],
+      "airspeed": 15.42,
+      "roll_deg": 3.3,
+      "pitch_deg": -3.1,
+      "yaw_deg": 293.4,
+      "roll_rate": 0.069,
+      "pitch_rate": -0.033,
+      "vz": -0.84,
+      "action": [
+        -1.0,
+        0.257,
+        -0.036,
+        1.0
+      ]
+    },
+    {
+      "step": 304,
+      "pos": [
+        -235.0,
+        -342.3,
+        1.0
+      ],
+      "airspeed": 15.41,
+      "roll_deg": 3.7,
+      "pitch_deg": -3.3,
+      "yaw_deg": 293.6,
+      "roll_rate": 0.067,
+      "pitch_rate": -0.034,
+      "vz": -0.89,
+      "action": [
+        -1.0,
+        0.296,
+        0.373,
+        1.0
+      ]
+    },
+    {
+      "step": 305,
+      "pos": [
+        -236.4,
+        -342.9,
+        0.9
+      ],
+      "airspeed": 15.4,
+      "roll_deg": 4.1,
+      "pitch_deg": -3.5,
+      "yaw_deg": 293.8,
+      "roll_rate": 0.069,
+      "pitch_rate": -0.035,
+      "vz": -0.95,
+      "action": [
+        -1.0,
+        0.74,
+        -0.16,
+        1.0
+      ]
+    },
+    {
+      "step": 306,
+      "pos": [
+        -237.8,
+        -343.6,
+        0.8
+      ],
+      "airspeed": 15.38,
+      "roll_deg": 4.6,
+      "pitch_deg": -3.7,
+      "yaw_deg": 294.0,
+      "roll_rate": 0.075,
+      "pitch_rate": -0.036,
+      "vz": -1.0,
+      "action": [
+        -1.0,
+        1.0,
+        0.509,
+        1.0
+      ]
+    },
+    {
+      "step": 307,
+      "pos": [
+        -239.2,
+        -344.2,
+        0.7
+      ],
+      "airspeed": 15.35,
+      "roll_deg": 5.0,
+      "pitch_deg": -3.9,
+      "yaw_deg": 294.3,
+      "roll_rate": 0.072,
+      "pitch_rate": -0.036,
+      "vz": -1.06,
+      "action": [
+        -1.0,
+        0.042,
+        0.203,
+        1.0
+      ]
+    },
+    {
+      "step": 308,
+      "pos": [
+        -240.6,
+        -344.8,
+        0.6
+      ],
+      "airspeed": 15.33,
+      "roll_deg": 5.4,
+      "pitch_deg": -4.1,
+      "yaw_deg": 294.6,
+      "roll_rate": 0.076,
+      "pitch_rate": -0.036,
+      "vz": -1.12,
+      "action": [
+        -1.0,
+        1.0,
+        0.227,
+        1.0
+      ]
+    },
+    {
+      "step": 309,
+      "pos": [
+        -242.0,
+        -345.4,
+        0.5
+      ],
+      "airspeed": 15.29,
+      "roll_deg": 5.9,
+      "pitch_deg": -4.3,
+      "yaw_deg": 294.9,
+      "roll_rate": 0.081,
+      "pitch_rate": -0.036,
+      "vz": -1.18,
+      "action": [
+        -1.0,
+        1.0,
+        0.171,
+        1.0
+      ]
+    },
+    {
+      "step": 310,
+      "pos": [
+        -243.4,
+        -346.1,
+        0.3
+      ],
+      "airspeed": 15.26,
+      "roll_deg": 6.4,
+      "pitch_deg": -4.5,
+      "yaw_deg": 295.3,
+      "roll_rate": 0.087,
+      "pitch_rate": -0.035,
+      "vz": -1.24,
+      "action": [
+        -1.0,
+        1.0,
+        -0.569,
+        1.0
+      ]
+    },
+    {
+      "step": 311,
+      "pos": [
+        -244.8,
+        -346.7,
+        0.2
+      ],
+      "airspeed": 15.21,
+      "roll_deg": 6.9,
+      "pitch_deg": -4.7,
+      "yaw_deg": 295.7,
+      "roll_rate": 0.093,
+      "pitch_rate": -0.035,
+      "vz": -1.3,
+      "action": [
+        -1.0,
+        1.0,
+        0.044,
+        1.0
+      ]
+    },
+    {
+      "step": 312,
+      "pos": [
+        -246.1,
+        -347.4,
+        0.1
+      ],
+      "airspeed": 15.16,
+      "roll_deg": 7.4,
+      "pitch_deg": -4.9,
+      "yaw_deg": 296.1,
+      "roll_rate": 0.094,
+      "pitch_rate": -0.034,
+      "vz": -1.36,
+      "action": [
+        -1.0,
+        0.578,
+        -0.094,
+        1.0
+      ]
+    },
+    {
+      "step": 313,
+      "pos": [
+        -247.5,
+        -348.0,
+        -0.1
+      ],
+      "airspeed": 15.11,
+      "roll_deg": 7.9,
+      "pitch_deg": -5.1,
+      "yaw_deg": 296.5,
+      "roll_rate": 0.084,
+      "pitch_rate": -0.034,
+      "vz": -1.42,
+      "action": [
+        -1.0,
+        -0.373,
+        0.311,
+        1.0
+      ]
+    },
+    {
+      "step": 314,
+      "pos": [
+        -248.8,
+        -348.7,
+        -0.2
+      ],
+      "airspeed": 15.05,
+      "roll_deg": 8.4,
+      "pitch_deg": -5.3,
+      "yaw_deg": 297.0,
+      "roll_rate": 0.083,
+      "pitch_rate": -0.033,
+      "vz": -1.48,
+      "action": [
+        -1.0,
+        0.979,
+        0.097,
+        1.0
+      ]
+    },
+    {
+      "step": 315,
+      "pos": [
+        -250.2,
+        -349.3,
+        -0.4
+      ],
+      "airspeed": 14.99,
+      "roll_deg": 8.9,
+      "pitch_deg": -5.5,
+      "yaw_deg": 297.5,
+      "roll_rate": 0.084,
+      "pitch_rate": -0.032,
+      "vz": -1.54,
+      "action": [
+        -1.0,
+        0.863,
+        -0.195,
+        1.0
+      ]
+    },
+    {
+      "step": 316,
+      "pos": [
+        -251.5,
+        -350.0,
+        -0.5
+      ],
+      "airspeed": 14.92,
+      "roll_deg": 9.4,
+      "pitch_deg": -5.7,
+      "yaw_deg": 298.1,
+      "roll_rate": 0.087,
+      "pitch_rate": -0.031,
+      "vz": -1.6,
+      "action": [
+        -1.0,
+        1.0,
+        0.248,
+        1.0
+      ]
+    },
+    {
+      "step": 317,
+      "pos": [
+        -252.8,
+        -350.7,
+        -0.7
+      ],
+      "airspeed": 14.85,
+      "roll_deg": 9.8,
+      "pitch_deg": -5.8,
+      "yaw_deg": 298.7,
+      "roll_rate": 0.083,
+      "pitch_rate": -0.03,
+      "vz": -1.65,
+      "action": [
+        -0.894,
+        0.167,
+        0.813,
+        1.0
+      ]
+    },
+    {
+      "step": 318,
+      "pos": [
+        -254.1,
+        -351.4,
+        -0.9
+      ],
+      "airspeed": 14.78,
+      "roll_deg": 10.3,
+      "pitch_deg": -6.0,
+      "yaw_deg": 299.3,
+      "roll_rate": 0.079,
+      "pitch_rate": -0.029,
+      "vz": -1.71,
+      "action": [
+        -1.0,
+        0.466,
+        -0.666,
+        1.0
+      ]
+    },
+    {
+      "step": 319,
+      "pos": [
+        -255.4,
+        -352.0,
+        -1.0
+      ],
+      "airspeed": 14.7,
+      "roll_deg": 10.7,
+      "pitch_deg": -6.1,
+      "yaw_deg": 300.0,
+      "roll_rate": 0.071,
+      "pitch_rate": -0.022,
+      "vz": -1.76,
+      "action": [
+        1.0,
+        -0.021,
+        -0.911,
+        1.0
+      ]
+    }
+  ]
+}

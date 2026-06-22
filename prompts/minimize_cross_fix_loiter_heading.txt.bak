@@ -1,0 +1,31 @@
+Apply fix #1 from the investigation.
+
+In envs/fixed_wing_env.py:
+
+During _reset_training() for FlightMode.LOITER,
+compute the CCW tangential heading exactly like MissionManager does,
+and store it in TargetInfo.heading.
+
+Goal:
+obs[17] during LOITER training must represent tangential heading error,
+not absolute yaw noise.
+
+Use the same tangent convention as mission_mgr._seg_to_target().
+
+After patching:
+verify:
+
+- LOITER training:
+obs[17] changes with tangent direction
+
+- Mission mode:
+same semantics
+
+Print sample:
+yaw
+target.heading
+obs[17]
+for first few reset frames
+
+Expected:
+obs[17] = heading error to tangent.

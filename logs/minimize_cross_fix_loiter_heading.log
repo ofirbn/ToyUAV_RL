@@ -1,0 +1,21 @@
+Prompt: prompts\minimize_cross_fix_loiter_heading.txt 
+-------------------------------------------- 
+Everything is consistent. Here's what was changed and why:
+
+---
+
+**Changes made to `envs/fixed_wing_env.py`:**
+
+**Fix (`_reset_training`, line 382–390):**
+- Computed `_dx = 0.0 - cx`, `_dy = 0.0 - cy` (aircraft pos minus orbit center at reset)
+- Set `tangent_hdg = math.atan2(-_dy, _dx)` — identical to `MissionManager._seg_to_target()` loiter case
+- Passed `heading=tangent_hdg` to `TargetInfo` (previously no heading was passed, defaulting to `0.0`)
+
+**Verification print (`reset()`, line 222–233):**
+- For the first 5 LOITER training resets, prints `yaw`, `target.heading`, and `obs[17]`
+- Expected output: `obs[17]` near `0.0` at reset (aircraft starts tangent to orbit, so heading error ≈ 0), and the value changes meaningfully as `yaw` changes across resets
+
+**Semantic invariant restored:**
+- obs[17] = `_angle_diff(target.heading, state.yaw) / π`
+- Before: `target.heading = 0.0` always → obs[17] was random yaw noise, not a signal
+- After: `target.heading` = CCW tangent at current position → obs[17] is the real heading error to the tangent, same semantics as mission mode

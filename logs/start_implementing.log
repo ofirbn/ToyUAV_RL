@@ -1,0 +1,37 @@
+Prompt: prompts\start_implementing.txt 
+-------------------------------------------- 
+Everything is built and tested. Here's a summary of what was created:
+
+---
+
+## What was built
+
+**New modular architecture** — fully working, all imports/smoke-tests pass:
+
+```
+sim/flight_modes.py       FlightMode enum (STABILIZE=0 … RECOVERY=7)
+sim/aircraft_dynamics.py  Re-exports AircraftPhysics from existing aircraft.py
+sim/mission_manager.py    MissionManager — loads JSON, advances segments, exposes TargetInfo
+sim/rewards.py            compute_reward() — dispatches to 8 per-mode reward functions
+envs/fixed_wing_env.py    FixedWingEnv — 27-D obs, 4-D action, training + mission modes
+render/pygame_renderer.py Renderer class — chase camera, 3D projection, aircraft model, HUD
+missions/demo_mission.json Takeoff → waypoint × 2 → loiter → approach → landing
+train.py                  Headless PPO (DummyVecEnv, no threading) → models/fixed_wing_multimode_ppo.zip
+visualize.py              Pygame opens immediately, model inference only, keyboard 1-8/R/ESC
+main.py                   python main.py train|visualize|demo
+requirements.txt
+```
+
+**Run training:**
+```
+python main.py train --timesteps 300000
+```
+
+**Run visualization** (opens window immediately, falls back to random actions if no model):
+```
+python main.py visualize
+```
+
+**Keyboard in visualize:**  `1-8` force flight mode · `R` reset · `ESC` quit
+
+The old `envs.py` / `aircraft.py` / original `main.py` are untouched — both systems coexist.

@@ -1,0 +1,46 @@
+Prompt: prompts\fix_loiter_physics.txt 
+-------------------------------------------- 
+Both look correct. All 5 files are updated. Here's a summary of every change made:
+
+---
+
+## Changes summary
+
+### `aircraft.py` — Physics (issues 1–4)
+
+**`RUDD_GAIN` 0.08 → 0.06** — weaker rudder: max steady-state rudder-induced yaw ≈ ±1.2°/s instead of ±1.6°/s.
+
+**New yaw dynamics** (replaces both the old `y_acc` line and the separate `state.yaw += g/v·sin(bank)·dt`):
+```
+coord_yr = (G / v) · sin(bank) / cos(bank)   # g·tan(bank)/v — exact formula
+y_acc    = rudd·RUDD_GAIN·q_ratio  −  YAW_DAMP·(yaw_rate − coord_yr)
+```
+Damping now drives `yaw_rate` **toward** the coordinated-turn equilibrium rather than toward zero. At steady state with zero rudder: `yaw_rate = g·tan(bank)/v`. Rudder can perturb it by at most ≈1.2°/s. Turning with bank=2° now produces ≈1.5°/s; bank=20° produces ≈15.7°/s. The old keel-steering cheat mechanism is eliminated.
+
+---
+
+### `sim/rewards.py` — Loiter reward (issues 5–6, 8)
+
+- `_LOITER_TARGET_SPEED` **13 → 15 m/s**
+- **`bank_track_r`** (new, 0.15 max) — direct bank-angle tracking reward, always active regardless of tangential alignment; pulls the policy to bank correctly during orbit acquisition
+- **`cheat_turn_p`** (new, up to −0.20) — penalizes yaw_rate exceeding the banked-turn equilibrium
+- **Sideslip formula** updated to `g·tan(bank)/v` (exact) instead of `g·sin(bank)/v` (approximate)
+- Weights rebalanced: `rad_r` 0.5→0.40, `alt_r` 0.15→0.10, `speed_r` 0.15→0.10
+
+---
+
+### `envs/fixed_wing_env.py` — Loiter init (issue 8)
+
+- `_LOITER_SPEED` 13 → **15 m/s**, `_LOITER_THR` 0.60 → **0.65**
+
+---
+
+### `render/pygame_renderer.py` — Telemetry (issue 9)
+
+Added **`COORD RATE`** row to the LOITER INFO panel showing `g·tan(bank)/v` in °/s. After the physics fix `TURN RATE ≈ COORD RATE` in steady coordinated flight — any divergence immediately flags residual steering.
+
+---
+
+### `train.py` — PPO metrics (issue 10)
+
+Added `_LogCapture` class injected into `model.logger.output_formats`. SB3 calls `logger.dump()` after each training update (and clears `name_to_value` at that point), so `_on_step` could never see the values. `_LogCapture.write()` is called *during* `dump()`, caching `train/*` metrics into `self._log_capture` before the clear. `_on_step` now reads from that persistent dict.

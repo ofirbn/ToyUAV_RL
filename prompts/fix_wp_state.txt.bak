@@ -1,0 +1,123 @@
+Waypoint mission state machine still broken.
+
+Current evidence:
+multiple repeated:
+"WAYPOINT REACHED"
+
+This should never occur repeatedly over consecutive frames.
+
+============================================================
+ROOT CAUSE
+============================================================
+
+Waypoint capture lacks:
+- hysteresis
+- transition state
+- cooldown
+- proper leg reset semantics
+
+Current logic likely behaves like:
+
+if distance < threshold:
+    waypoint_reached = True
+
+executed every frame.
+
+============================================================
+REQUIRED FIXES
+============================================================
+
+1. Add proper waypoint state machine.
+
+States:
+- APPROACHING
+- CAPTURED
+- TRANSITIONING
+- TRACKING_NEW_LEG
+
+============================================================
+2. Trigger waypoint capture ONCE only.
+============================================================
+
+When waypoint reached:
+- emit event once
+- increment waypoint index once
+- suppress retriggering
+
+============================================================
+3. Add hysteresis/cooldown.
+============================================================
+
+After capture:
+ignore waypoint trigger for:
+- several frames
+OR
+- minimum traveled distance
+OR
+- transition timer
+
+============================================================
+4. Reset leg-local metrics correctly.
+============================================================
+
+On waypoint switch:
+prev_distance = current_distance = new_leg_distance
+
+Do NOT compare:
+old waypoint distance
+vs
+new waypoint distance.
+
+============================================================
+5. Add proper arrival bonus.
+============================================================
+
+Current:
+arrival_bonus ≈ 0
+
+Increase substantially.
+
+Waypoint capture should produce:
+clear positive reward spike.
+
+============================================================
+6. Suppress progress penalties during transitions.
+============================================================
+
+Briefly disable:
+distance-derivative penalties
+during waypoint handoff.
+
+============================================================
+7. Add mission telemetry.
+============================================================
+
+Display:
+- waypoint index
+- transition timer
+- waypoint state
+- leg distance
+- leg progress
+
+============================================================
+8. Smooth target switching.
+============================================================
+
+New waypoint guidance should blend smoothly,
+not abruptly redirect aircraft.
+
+============================================================
+9. Prevent repeated UI spam.
+============================================================
+
+Only show:
+"WAYPOINT REACHED"
+once per capture event.
+
+============================================================
+10. Goal
+============================================================
+
+Waypoint navigation should behave like:
+continuous path-following with smooth leg transitions,
+not repeated threshold-trigger events.

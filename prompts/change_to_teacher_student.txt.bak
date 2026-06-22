@@ -1,0 +1,361 @@
+ToyUAV_RL — implement teacher-student learning using classical autopilot as instructor.
+
+Goal:
+Current PPO-only training is slow and inconsistent.
+Sometimes millions of steps still fail basic task convergence.
+
+We want:
+Classical autopilot = teacher
+Neural policy = student
+
+Student first imitates teacher via supervised learning,
+then PPO fine-tunes.
+
+Keep existing project structure as much as possible.
+
+============================================================
+HIGH LEVEL PLAN
+============================================================
+
+Implement:
+
+1. Classical teacher autopilot
+2. Demonstration recorder
+3. Behavior cloning trainer
+4. PPO warm-start from cloned weights
+5. Optional teacher override during unsafe flight
+6. Dashboard telemetry for teacher/student
+
+Minimal invasive architecture.
+
+============================================================
+1. CLASSICAL TEACHER AUTOPILOT
+============================================================
+
+Create:
+
+controllers/teacher_autopilot.py
+
+Implement deterministic teacher for:
+
+--------------------------------
+STABILIZE
+--------------------------------
+
+Inputs:
+- roll
+- pitch
+- roll_rate
+- pitch_rate
+
+Outputs:
+- aileron
+- elevator
+
+PID style:
+
+roll_error → aileron
+pitch_error → elevator
+
+Smooth and clipped.
+
+--------------------------------
+ALTITUDE HOLD
+--------------------------------
+
+Inputs:
+- altitude
+- vertical speed
+- airspeed
+
+Logic:
+altitude error → desired pitch
+airspeed error → throttle
+
+--------------------------------
+HEADING HOLD
+--------------------------------
+
+Inputs:
+- heading
+- heading_target
+
+Logic:
+heading error → desired bank
+desired bank → aileron
+
+--------------------------------
+WAYPOINT
+--------------------------------
+
+Inputs:
+- waypoint bearing
+- cross track
+- distance
+
+Logic:
+bearing error → heading target
+then heading hold
+
+--------------------------------
+LOITER
+--------------------------------
+
+Inputs:
+- radius error
+- tangential alignment
+
+Logic:
+radius → desired bank
+
+Teacher need not be perfect.
+Only stable and sensible.
+
+API:
+
+class TeacherAutopilot:
+    def act(self, obs, phase):
+        return np.array([
+            elevator,
+            aileron,
+            rudder,
+            throttle
+        ])
+
+============================================================
+2. DEMONSTRATION RECORDING
+============================================================
+
+Create:
+
+ml/record_teacher_dataset.py
+
+During env stepping:
+
+teacher_action = teacher.act(obs, phase)
+
+Save:
+
+obs
+action
+phase
+reward
+done
+
+Format:
+numpy npz
+
+results/demos/
+
+Example:
+
+waypoint_demo_001.npz
+
+Support:
+--phase stabilize
+--phase altitude_hold
+--phase heading_hold
+--phase waypoint
+--phase loiter
+
+Add:
+--episodes
+--seed
+
+============================================================
+3. BEHAVIOR CLONING
+============================================================
+
+Create:
+
+ml/train_behavior_clone.py
+
+Input:
+dataset npz
+
+Network:
+same actor architecture as PPO policy if possible.
+
+Train supervised:
+
+loss = MSE(student_action, teacher_action)
+
+Metrics:
+- train loss
+- val loss
+- action MAE
+
+Save:
+
+models/bc/
+
+Example:
+
+models/bc/waypoint_bc.zip
+
+============================================================
+4. PPO WARM START
+============================================================
+
+Modify training entry.
+
+Add CLI:
+
+--init-from-bc path
+
+If provided:
+
+load actor weights
+into PPO policy
+
+Continue PPO training normally.
+
+Example:
+
+python train.py \
+    --phase waypoint \
+    --init-from-bc models/bc/waypoint_bc.zip
+
+============================================================
+5. OPTIONAL TEACHER SAFETY OVERRIDE
+============================================================
+
+Add optional runtime blend.
+
+CLI:
+
+--teacher-blend 0.0..1.0
+--teacher-safety true/false
+
+Blend:
+
+u =
+alpha * student
++
+(1-alpha) * teacher
+
+Safety override:
+
+if dangerous:
+    teacher wins
+
+Danger examples:
+- stall margin low
+- altitude too low
+- sink rate extreme
+
+Expose alpha schedule:
+can decay teacher over time.
+
+============================================================
+6. DASHBOARD TELEMETRY
+============================================================
+
+Add display:
+
+--------------------------------
+CONTROL SOURCE
+--------------------------------
+
+TEACHER
+STUDENT
+BLENDED
+SAFETY OVERRIDE
+
+--------------------------------
+IMITATION METRICS
+--------------------------------
+
+teacher/student action error
+
+elevator diff
+aileron diff
+rudder diff
+throttle diff
+
+--------------------------------
+OVERRIDE COUNT
+
+--------------------------------
+teacher blend %
+
+============================================================
+7. IMPORTANT CONSTRAINTS
+============================================================
+
+Keep:
+- current env
+- current PPO
+- dashboard
+
+Do not rewrite architecture.
+
+Add isolated modules.
+
+Avoid breaking existing checkpoints.
+
+Preserve current training commands.
+
+============================================================
+8. VALIDATION
+============================================================
+
+After implementation verify:
+
+--------------------------------
+A
+--------------------------------
+
+Teacher alone:
+flies stabilize
+alt hold
+heading
+waypoint
+loiter
+
+--------------------------------
+B
+--------------------------------
+
+Dataset records properly.
+
+--------------------------------
+C
+--------------------------------
+
+Behavior clone:
+matches teacher.
+
+--------------------------------
+D
+--------------------------------
+
+PPO initialized from BC:
+converges much faster than random init.
+
+--------------------------------
+E
+--------------------------------
+
+Dashboard telemetry updates correctly.
+
+============================================================
+9. EXPECTED RESULT
+============================================================
+
+Compared to PPO from scratch:
+
+- much faster convergence
+- fewer crashes
+- stable curriculum
+- better waypoint learning
+- easier debugging
+
+Focus on clean implementation.
+
+After coding:
+show exact files changed,
+CLI examples,
+and any caveats.
+
+text me when finished

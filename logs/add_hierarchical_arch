@@ -1,0 +1,1 @@
+The plan is written to `quirky-sparking-leaf.md` and ready for review — milestones M1 through M5, each reusing the existing `MissionManager`, `TeacherAutopilot`, BC pipeline, and curriculum/config machinery, with empty `models/experts/` always falling back to today's single-model behavior for backward compatibility. Let me know if you'd like changes before I proceed.

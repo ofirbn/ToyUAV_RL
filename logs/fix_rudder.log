@@ -1,0 +1,40 @@
+Prompt: prompts\fix_rudder.txt 
+-------------------------------------------- 
+Everything is consistent. Here's a summary of every change made and the reasoning:
+
+---
+
+## Changes Made
+
+### `aircraft.py` — Core physics fix
+
+**`ROLL_STAB` 5.5 → 1.2** — The root cause of the problem. With `AIL_GAIN=0.8`, the equilibrium bank angle where aileron force equals dihedral restoring force is `AIL_GAIN / ROLL_STAB`. At 5.5 that's only **8.3°** — the aircraft physically cannot sustain any meaningful bank angle, so PPO learned to steer with rudder instead. At 1.2, the maximum sustainable bank is **~41°**, and a 16° loiter bank requires only ~47% aileron — realistic.
+
+**`RUDD_GAIN` 0.20 → 0.08** — Terminal yaw rate from full rudder drops from ~2.3°/s to ~0.9°/s. Rudder is now only strong enough to coordinate turns and damp sideslip, not act as primary steering.
+
+### `sim/rewards.py` — Loiter reward redesign
+
+| Term | Old | New |
+|------|-----|-----|
+| `radius_reward` | ×0.6 | ×0.5 |
+| `tangential_flight` | ×0.3 | ×0.25 |
+| `altitude_reward` | ×0.2 | ×0.15 |
+| `speed_reward` (13 m/s) | — | ×0.15 |
+| `coord_turn` (bank matches orbit) | — | ×0.20 |
+| `sideslip_pen` (yaw vs bank) | — | up to −0.25 |
+
+The `coord_turn` term rewards bank angle matching `atan(v²/Rg)` scaled by tangential alignment — no credit for banking while not on orbit. The `sideslip_pen` fires when `|yaw_rate − (g/v)·sin(roll)| > 0.02 rad/s`.
+
+### `envs/fixed_wing_env.py`
+
+- Loiter resets at **13 m/s / 60% throttle** (was curriculum-random ~9-10 m/s)
+- Saturation penalty weight **0.4 → 0.6** for all modes
+
+### `render/pygame_renderer.py` — Loiter HUD
+
+New **LOITER INFO** section in the right panel shows:
+- **TURN RATE** (°/s) — actual yaw rate
+- **BANK** — current bank angle (red if < 3°, amber if < 8° during significant turning)
+- **REQ BANK** — theoretically required bank for this orbit at current speed
+- **LAT-G** — lateral centripetal g-load
+- **COORD ERR** — signed sideslip deviation (green=coordinated, amber=mild skid, red=severe)

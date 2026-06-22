@@ -1,0 +1,27 @@
+Prompt: prompts\fix_wp_state.txt 
+-------------------------------------------- 
+All changes look correct. Here's a summary of what was done:
+
+---
+
+**Root cause**: `_waypoint_reached = True` persisted for the entire episode once set, and the renderer rendered "WAYPOINT REACHED" every frame it was True. Also `_wp_arrival_steps` incremented every frame the aircraft stayed inside the 20m radius.
+
+**Fixes applied across 3 files:**
+
+**`envs/fixed_wing_env.py`**
+- Added `_wp_state` / `_wp_capture_event` / `_wp_transition_timer` / `_wp_captured_count` fields
+- Replaced the per-frame arrival trigger with a proper state machine: `APPROACHING → TRANSITIONING (15-step cooldown) → APPROACHING`
+- `_wp_capture_event` is True for exactly 1 frame per capture
+- On `wp_switch_event` (new leg), state resets immediately to `approaching`
+- Progress penalty suppressed while `wp_state == 'transitioning'`
+- New fields forwarded to `compute_reward()` and `info` dict
+
+**`sim/rewards.py`**
+- `_waypoint()` now fires arrival bonus only on `wp_capture_event` (one-shot), not `curr_dist < 20` every frame
+- Progress clamped to ≥0 during `wp_transitioning` to absorb leg-handoff discontinuity
+
+**`render/pygame_renderer.py`**
+- "WAYPOINT REACHED" now flashes for 3 seconds on each capture event then auto-dismisses — driven by `_wp_capture_flash_timer`, not the persistent `_waypoint_reached` flag
+- WP distance label turns amber during transition cooldown
+- New **WAYPOINT INFO** section in right panel: STATE / WP IDX / CAPTURED count / COOLDOWN timer / LEG DIST / LEG PROG %
+- Legacy `render()` patches `wp_capture_event`, `wp_captured_count`, `wp_state`, `wp_transition_timer` into shared state

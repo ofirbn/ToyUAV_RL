@@ -1,0 +1,248 @@
+Investigate possible cross-mode behavior leakage in the multi-mode PPO policy.
+
+Context:
+The policy observation already includes:
+- aircraft state
+- target vector / distance / heading error / altitude error
+- mode one-hot
+- previous action
+
+Teacher + BC + PPO all use the same observation.
+
+Problem:
+During PPO fine-tuning, the aircraft sometimes appears to behave as if another mode is influencing it.
+Example observed:
+- APPROACH may look partially like LOITER
+But this is likely a general issue, not specific to one pair of modes.
+
+Goal:
+Determine whether true cross-mode interference exists,
+or whether the behavior is caused by reward shaping / target ambiguity / teacher dataset issues.
+
+Do not assume.
+Inspect code and report findings.
+
+============================================================
+1. VERIFY MODE CONDITIONING IS APPLIED CORRECTLY
+============================================================
+
+Inspect:
+- envs/fixed_wing_env.py
+- train.py
+- PPO wrappers
+- BC dataset recorder
+- BC trainer
+
+Verify:
+
+A.
+Mode one-hot is always valid:
+- exactly one bit active
+- correct index
+- updated immediately on mode transition
+- reset correctly
+
+B.
+Teacher receives same mode.
+
+C.
+BC dataset stores correct mode.
+
+D.
+PPO receives same mode.
+
+Report:
+PASS / FAIL
+
+============================================================
+2. CHECK FOR MODE TRANSITION BLEED
+============================================================
+
+Inspect mode switching logic.
+
+Verify:
+- old mode state is cleared
+- target updates immediately
+- no stale reward variables
+- no stale integrators
+- no stale teacher controller state
+- no stale cached target vectors
+
+Examples:
+On transition:
+WAYPOINT → LOITER
+LOITER → APPROACH
+RECOVERY → previous mode
+
+Check:
+- heading target reset?
+- altitude target reset?
+- integrator reset?
+- orbit variables reset?
+- runway tracking variables reset?
+
+Report anything persistent across transitions.
+
+============================================================
+3. CHECK REWARD OVERLAP ACROSS MODES
+============================================================
+
+Inspect rewards.
+
+For every mode:
+list active reward terms.
+
+Example:
+STABILIZE:
+...
+
+APPROACH:
+...
+
+LOITER:
+...
+
+Check whether too many modes rely on:
+- generic distance-to-target
+- generic heading magnitude
+- generic altitude magnitude
+
+Flag:
+reward terms that are shared but may encourage similar behavior.
+
+Example:
+APPROACH and LOITER both rewarding “reduce distance to target”
+could create turning/orbit behavior.
+
+Do not modify yet.
+Only report.
+
+============================================================
+4. CHECK OBSERVATION AMBIGUITY
+============================================================
+
+For each mode:
+list which obs fields are relevant.
+
+Check whether any mode lacks required context.
+
+Examples:
+
+APPROACH may need:
+- runway centerline cross-track
+- along-track distance
+- glideslope error
+
+LOITER may need:
+- orbit radius error
+- tangential alignment
+
+WAYPOINT may need:
+- leg progress
+
+Check whether current generic target vector is insufficient.
+
+Flag ambiguous cases.
+
+============================================================
+5. CHECK TEACHER DATASET CONTAMINATION
+============================================================
+
+Inspect recorded demos.
+
+For each phase:
+report:
+- sample count
+- mode distribution
+- transitions inside dataset
+
+Verify:
+requested phase = actual phase.
+
+Example:
+waypoint dataset should not contain approach/loiter samples.
+
+Flag contamination.
+
+============================================================
+6. ADD TEMPORARY TELEMETRY
+============================================================
+
+Add diagnostics panel.
+
+Display:
+- active_mode
+- mode one-hot
+- target vector
+- current reward terms
+- heading error
+- altitude error
+
+And:
+behavior metrics:
+- turn rate
+- trajectory curvature
+- orbit score
+- straight-line score
+- vertical oscillation score
+
+This is diagnostic only.
+
+============================================================
+7. REPORT ROOT CAUSE
+============================================================
+
+After inspection classify:
+
+A.
+No leakage.
+Behavior explained by reward.
+
+B.
+Observation ambiguity.
+
+C.
+Transition-state persistence.
+
+D.
+Teacher dataset contamination.
+
+E.
+True shared-policy interference.
+
+============================================================
+8. ONLY IF TRUE INTERFERENCE EXISTS
+============================================================
+
+Then recommend fixes in order:
+
+lowest impact first:
+1. reward adjustments
+2. better mode-specific obs
+3. reset transition variables
+4. stronger teacher datasets
+
+only last:
+5. shared encoder + mode-specific actor heads
+
+Do not implement architecture changes unless clearly justified.
+
+============================================================
+9. FINAL OUTPUT
+============================================================
+
+Return:
+
+A. PASS/FAIL for mode conditioning
+
+B. transition persistence findings
+
+C. reward overlap findings
+
+D. observation ambiguity findings
+
+E. dataset contamination findings
+
+F. most likely root cause
+
+G. recommended fixes in priority order

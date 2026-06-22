@@ -1,0 +1,15 @@
+Prompt: prompts\fix_bug5.txt 
+-------------------------------------------- 
+Only one call site (`train.py:65`) and the `_advance()` / `_load()` internals. The fix is complete. Here's a summary of what changed and why:
+
+---
+
+**Root cause**: `CurriculumManager.__init__` had `if save_file: load() elif start_stage: use_start_stage`. The `elif` was never reached when a `curriculum_state.json` existed, so a previous run's waypoint-stage save silently overrode `curriculum_phase=stabilize`.
+
+**Fix 1 — `sim/curriculum.py`**: `start_stage` is now always applied after the save file is read. If the saved stage differs from `start_stage`, the override is logged, `stage_idx` is set to `start_stage`, and `advances` is reset to 0. This makes `curriculum_phase=stabilize` unambiguously mean "start from stabilize."
+
+**Fix 2 — `envs/fixed_wing_env.py`**:
+- Added an assertion that `self._mission is None` for all non-`mixed` phases — explicit contract that mission manager cannot interfere during isolated training.
+- Added the per-reset debug line: `[RESET] CURRICULUM ENABLED | PHASE=STABILIZE | MODE=STABILIZE | MISSION_MANAGER=False | AUTO_SWITCH=False`. Prints only when a curriculum manager is active.
+
+The existing lock assertions (`assert mode == _locked`) and the step-level assertion (`assert self._mode == _locked`) remain in place — they fire immediately if any regression slips through.

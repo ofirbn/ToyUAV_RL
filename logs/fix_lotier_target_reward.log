@@ -1,0 +1,23 @@
+Prompt: prompts\fix_lotier_target_reward.txt 
+-------------------------------------------- 
+All changes are in place. Here's a summary of what was done:
+
+---
+
+**`sim/rewards.py` — `_loiter`:**
+- **Radius reward**: switched from linear `max(0, 1 - rad_err/radius) * 0.40` to exponential `exp(-rad_err / (radius*0.25)) * 0.40`. Gradient at the target is now 4× stronger; reward never hard-clips to zero far from target.
+- **Velocity decomposition**: explicit `v_tang` / `v_rad` split using radial + tangential unit vectors.
+- **Tangential reward**: weight raised from 0.25 → 0.30.
+- **Radial velocity penalty** (new): `min(|v_rad| * 0.06, 0.20)` — penalises spiralling in or out. At 3 m/s radial drift the penalty is 0.18; caps at 0.20 for stronger drift. Added to `bd` as `radial_vel_pen`.
+
+**`envs/fixed_wing_env.py`:**
+- Added `_loiter_radius_buf` (50-step deque) initialised in `__init__`, cleared in `reset`.
+- After the `info` dict, added a LOITER-only block that computes and stores: `loiter_radius_current`, `loiter_radius_desired`, `loiter_radial_error`, `loiter_radial_vel`, `loiter_radius_std` (rolling std), `loiter_tang_ratio`.
+
+**`train.py` — `LiveCallback`:**
+- All 6 loiter diagnostic fields forwarded from `infos[0]` to the shared-state patch so the renderer sees them.
+
+**`render/pygame_renderer.py` — LOITER INFO panel:**
+- Added an orbit quality block (divider + 6 rows) after COORD ERR: CUR RAD, DES RAD, RAD ERR (green/amber/red), RAD VEL (green/amber/red), RAD STD (green/amber/red), TANG FRAC (green/amber/red). Thresholds: RAD ERR <10m green, RAD VEL <1 m/s green, RAD STD <5m green.
+
+Expect a small reward drop on resume as `radial_vel_pen` fires on the current wandering behaviour. Monitor RAD STD and RAD VEL in the HUD — they should trend down as the policy learns to hold the circle.

@@ -1,0 +1,31 @@
+Prompt: prompts\fix_waypoint_training_discontinuity.txt 
+-------------------------------------------- 
+All three files are updated. Here's what changed and why each fix addresses the root cause:
+
+---
+
+### Root cause
+In training mode, after `WAYPOINT REACHED` the episode kept running for up to 600 steps. The aircraft flew past the waypoint, making `progress` negative and `bonus` zero — a hard reward cliff from `~5.3` to `~-0.3` per step.
+
+---
+
+### Changes
+
+**`sim/rewards.py` — `_waypoint`**
+| Before | After |
+|---|---|
+| `bonus = 5.0` (too small) | `bonus = 20.0` |
+| Progress goes negative after overshoot | `progress = max(progress, 0.0)` while within 20 m |
+| No distance telemetry | `wp_prev_dist`, `wp_curr_dist` in breakdown |
+| Clip ceiling `6.0` | `25.0` (won't clip the new bonus) |
+
+**`envs/fixed_wing_env.py`**
+- `_wp_arrival_steps` counter: increments each step inside the 20 m zone — provides hysteresis and is exposed in info
+- `_prev_mission_wp_idx`: detects mission-mode waypoint transitions, sets `wp_switch_event = True` on that step
+- **Immediate truncation on arrival** (training mode only): `truncated = True` the moment `_waypoint_reached` is set — the agent never enters the negative post-arrival phase
+- Info dict gains: `wp_prev_dist`, `wp_curr_dist`, `wp_progress`, `wp_arrived`, `wp_arrival_steps`, `wp_switch_event`
+
+**`render/pygame_renderer.py`**
+- 3D viewport shows `WP Xm` in cyan while approaching, green after arrival
+- `WAYPOINT REACHED [N]` banner with step count appears centered in the view on arrival
+- Legacy `render()` patches `wp_curr_dist`, `wp_arrived`, `wp_arrival_steps` into shared state

@@ -1,0 +1,26 @@
+Prompt: prompts\fix_bug4.txt 
+-------------------------------------------- 
+Everything passes. Here's a summary of what was implemented:
+
+---
+
+**Mastery-based curriculum — changes across 4 files:**
+
+**`sim/curriculum.py`** — core overhaul
+- Added `EpisodeData` dataclass: carries `success`, `crashed`, `stalled`, `ep_length`, `mean_roll_rate`, `mean_pitch_rate`, `ctrl_oscillation` per episode
+- Added `MasteryGate` dataclass: per-stage set of criteria (all must pass simultaneously)
+- Each `StageConfig` now carries its own `MasteryGate` — very strict for `stabilize` (92% success, <4% crash/stall, <0.40 rad/s roll, <0.30 rad/s pitch, <0.28 ctrl oscillation, 200-episode window), relaxing progressively through later stages
+- `CurriculumManager` tracks 7 separate rolling deques (one per metric); advances only when **all** criteria pass; deques resize when stage advances
+- New methods: `locked_criteria()` → list of failing criterion names with values, `is_mastered()`, `mastery_details()` for HUD
+- `status_str()` now shows all key metrics + `LOCKED[n]` or `MASTERED`
+
+**`envs/fixed_wing_env.py`**
+- Added per-episode accumulators: `_ep_roll_rate_acc`, `_ep_pitch_rate_acc`, `_ep_ctrl_osc_acc` (reset each episode)
+- Accumulates per step; at episode end builds an `EpisodeData` and passes it to `record_episode()`
+
+**`train.py`** (`LiveCallback`)
+- Pulls `mastery_locked`, `mastery_failing`, `mastery_details` from the curriculum manager and pushes to `shared_state`
+
+**`render/pygame_renderer.py`** (CURRICULUM section)
+- When locked: shows red **"NEXT PHASE LOCKED"** banner, episode sample progress bar, and up to 4 failing criteria (e.g. `STALL_RATE_TOO_HIGH`, `ROLL_STABILITY_NOT_MET`)
+- When mastered: shows green **"MASTERED"** badge

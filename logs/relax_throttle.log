@@ -1,0 +1,26 @@
+Prompt: prompts\relax_throttle.txt 
+-------------------------------------------- 
+All edits landed correctly across all 6 files. Here's a summary of what was implemented:
+
+---
+
+**1. `aircraft.py`** — physics changes
+- `THROTTLE_LAG 1.5 → 0.05` → per-step lag is exactly `0.995 * prev + 0.005 * cmd`
+- Base drag `CD: 0.08 → 0.135` → at 14 m/s, equilibrium throttle ≈ 0.60 (was ~0.38)
+
+**2. `sim/rewards.py`** — ALT_HOLD reward
+- Added Gaussian airspeed reward: `exp(-|spd - 14.0| / 3.0) * 0.3`, up to +0.30/step toward 14 m/s
+
+**3. `envs/fixed_wing_env.py`** — env mechanics
+- `_CRUISE_THR: 0.30 → 0.55`; ALT_HOLD resets start at `throttle_pos=0.60`
+- Throttle deadband: command changes `< 0.02` are absorbed (no actuator motion)
+- Throttle derivative penalty in ALT_HOLD: `throttle_delta * 50.0` (max ≈ 0.25/step with new lag)
+- Info dict gains: `throttle_command`, `throttle_delta`, `target_airspeed`, `airspeed_error`
+
+**4. `shared_state.py`** — 4 new fields initialized
+
+**5. `train.py`** — 4 new fields written to the shared-state patch each step
+
+**6. `render/pygame_renderer.py`** — right panel HUD
+- Single `THR` row replaced by `THR_CMD / THR_ACT / THR_Δ` (delta turns amber/red when moving)
+- ALT_HOLD mode adds a dedicated block: `TGT_SPD = 14.0 m/s` and `SPD_ERR` (color-coded green/amber/red)

@@ -81,6 +81,9 @@ _state: dict = {
     "landing_success_rate":      0.0,
     "recovery_success_rate":     0.0,
 
+    # ── pipeline ─────────────────────────────────────────────────────────────
+    "pipeline_phase_label": "",   # shown as banner in 3D view
+
     # ── session ───────────────────────────────────────────────────────────────
     "ready":           False,
     "training_done":   False,

@@ -1,0 +1,193 @@
+Prompt: prompts\do_m2.txt 
+-------------------------------------------- 
+Since `controllers/mission_manager.py` is untracked in git (not yet committed from M1), `git diff` shows nothing. Here are the diffs against the M1 version I read at the start of this task.
+
+## 1. Files changed
+
+- `controllers/mission_manager.py` (only file edited)
+- `models/experts/.gitkeep` (new empty directory placeholder, untracked — `models/` appears to be gitignored except for explicitly force-added checkpoints)
+
+## 2. Unified diff
+
+```diff
+--- a/controllers/mission_manager.py
++++ b/controllers/mission_manager.py
+@@
+ """
+ Mission Manager — routes inference requests to the active expert policy
+ for the current flight mode.
+ 
+ M1 scope: exactly one expert (the default monolithic PPO policy) is
+ active for every FlightMode, reproducing today's single-model behavior
+-exactly. models/experts/ is not consulted yet — that lands in M2
+-(loading per-mode experts) and M3 (routing inference through them).
+-This class exists now so later milestones only need to populate
+-self._experts, not touch call sites again.
++exactly.
++
++M2 scope: if models/experts/<mode>.zip exists for a given FlightMode, it
++is loaded into self._experts and used for that mode. Modes without a
++matching file keep using the default policy via get_active_expert's
++fallback. Routing logic itself (get_active_expert/predict) is unchanged
++from M1 — populating self._experts is enough to activate routing.
++M3 will build on this with smooth transitions between experts.
+ """
+ 
+ import os
+ 
+ from stable_baselines3 import PPO
+ 
+ from sim.flight_modes import FlightMode
+ 
+ 
+ class Expert:
+     """Wraps a loaded SB3 policy (or None) behind a uniform .predict()."""
+@@
+ class MissionManager:
+     """
+     Selects the active expert for the current flight mode and forwards
+     predict() calls to it.
+     """
+ 
++    # Expected filename (without extension) under experts_dir for each mode.
++    _MODE_FILENAMES = {
++        FlightMode.STABILIZE:     "stabilize",
++        FlightMode.RECOVERY:      "recovery",
++        FlightMode.ALTITUDE_HOLD: "alt_hold",
++        FlightMode.HEADING_HOLD:  "hdg_hold",
++        FlightMode.WAYPOINT:      "waypoint",
++        FlightMode.LOITER:        "loiter",
++        FlightMode.APPROACH:      "approach",
++        FlightMode.LANDING:       "landing",
++    }
++
+     def __init__(self, default_model_path: str = "models/latest.zip",
+                  experts_dir: str = "models/experts",
+                  fallback_paths=None):
+@@
+     def load(self) -> "MissionManager":
+         """Load the default policy, trying fallback paths in order
+-        (mirrors the previous loading behavior in visualize.py)."""
++        (mirrors the previous loading behavior in visualize.py), then
++        load any per-mode experts found in experts_dir."""
+         path = self.default_model_path
+         if path.endswith(".zip"):
+             path = path[:-4]
+         candidates = [path] + [p for p in self.fallback_paths if p != path]
+ 
+         for candidate in candidates:
+             if os.path.exists(candidate + ".zip"):
+                 try:
+                     print(f"[MISSION] Loading default policy from {candidate}.zip")
+                     self._default_expert = Expert(PPO.load(candidate))
+-                    return self
++                    break
+                 except Exception as e:
+                     print(f"[MISSION] Could not load {candidate}: {e}")
+-        print("[MISSION] No default policy loaded — falling back to random actions.")
++        else:
++            print("[MISSION] No default policy loaded — falling back to random actions.")
++
++        self._load_experts()
+         return self
+ 
++    def _load_experts(self):
++        """Populate self._experts with any per-mode checkpoints found in
++        experts_dir. Modes without a matching file are left unset, so
++        get_active_expert() keeps falling back to the default policy."""
++        if not os.path.isdir(self.experts_dir):
++            return
++        for mode, filename in self._MODE_FILENAMES.items():
++            zip_path = os.path.join(self.experts_dir, filename + ".zip")
++            if not os.path.exists(zip_path):
++                continue
++            try:
++                print(f"[MISSION] Loading expert for {mode.name} from {zip_path}")
++                self._experts[mode] = Expert(PPO.load(zip_path[:-4]))
++            except Exception as e:
++                print(f"[MISSION] Could not load expert {zip_path}: {e}")
++
+     @property
+     def loaded(self) -> bool:
+         return self._default_expert.loaded
+ 
+     def get_active_expert(self, flight_mode: FlightMode) -> Expert:
+-        """Return the expert responsible for `flight_mode`.
+-        M1: always the default policy, regardless of mode."""
++        """Return the expert responsible for `flight_mode`: the matching
++        entry in self._experts if one was loaded, else the default policy."""
+         return self._experts.get(flight_mode, self._default_expert)
+```
+
+(`get_active_expert`/`predict` bodies are untouched — only their docstrings changed — confirming routing logic itself didn't change.)
+
+## 3. Commands to test
+
+No experts present (default fallback for every mode):
+```bash
+python -c "
+from controllers.mission_manager import MissionManager
+from sim.flight_modes import FlightMode
+mm = MissionManager().load()
+print('experts registered:', list(mm._experts.keys()))
+for mode in FlightMode:
+    print(mode.name, '-> default' if mm.get_active_expert(mode) is mm._default_expert else '-> EXPERT')
+"
+```
+
+With one expert present:
+```bash
+cp models/best_success.zip models/experts/stabilize.zip
+python -c "
+from controllers.mission_manager import MissionManager
+from sim.flight_modes import FlightMode
+mm = MissionManager().load()
+print('experts registered:', list(mm._experts.keys()))
+for mode in FlightMode:
+    print(mode.name, '-> default' if mm.get_active_expert(mode) is mm._default_expert else '-> EXPERT')
+"
+rm models/experts/stabilize.zip
+```
+
+I ran both above using the project's `venv`.
+
+## 4. Expected output
+
+No experts:
+```
+[MISSION] Loading default policy from models/latest.zip
+experts registered: []
+STABILIZE -> default
+ALTITUDE_HOLD -> default
+HEADING_HOLD -> default
+WAYPOINT -> default
+LOITER -> default
+APPROACH -> default
+LANDING -> default
+RECOVERY -> default
+```
+
+With `stabilize.zip` present:
+```
+[MISSION] Loading default policy from models/latest.zip
+[MISSION] Loading expert for STABILIZE from models/experts\stabilize.zip
+experts registered: [<FlightMode.STABILIZE: 0>]
+STABILIZE -> EXPERT
+ALTITUDE_HOLD -> default
+HEADING_HOLD -> default
+WAYPOINT -> default
+LOITER -> default
+APPROACH -> default
+LANDING -> default
+RECOVERY -> default
+```
+
+Both match what I actually observed running the commands above — confirming default-only behavior is preserved and an explicit expert is picked up in isolation without affecting other modes.
+
+## 5. Rollback instructions
+
+`controllers/mission_manager.py` is untracked in git, so there's no commit to revert. To roll back:
+- Re-apply the diff in reverse (remove `_MODE_FILENAMES`, `_load_experts`, the `_load_experts()` call in `load()`, and restore the original docstrings), or
+- Restore from your own backup/editor history if you have one, since there's no git history for this file yet.
+
+`models/experts/.gitkeep` can simply be deleted; it has no effect on behavior (the directory check in `_load_experts` just skips loading if the dir doesn't exist or is empty).

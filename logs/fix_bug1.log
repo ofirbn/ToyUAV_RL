@@ -1,0 +1,31 @@
+Prompt: prompts\fix_bug1.txt 
+-------------------------------------------- 
+All files compile cleanly. Here's a summary of every change made:
+
+---
+
+**Root cause:** `curriculum.py` stages 2–8 (cruise through landing) all include `FlightMode.RECOVERY` in their modes list. When the curriculum auto-advances from `stabilize` → `cruise`, the env starts sampling RECOVERY at episode resets, producing the alternating behavior.
+
+**Fixes applied:**
+
+### `sim/curriculum.py`
+- Added `emergency_recovery_enabled: bool = False` field to `StageConfig`
+- Set `emergency_recovery_enabled=True` on the `mixed` stage only (all others default to `False`)
+- Added `get_emergency_recovery_enabled()` to `CurriculumManager`
+- Added `'recovery': [FlightMode.RECOVERY]` to `_LEGACY` for static-phase use
+- Added `_EMERGENCY_RECOVERY_DEFAULTS` dict and `get_emergency_recovery_default()` helper
+
+### `envs/fixed_wing_env.py`
+- New constructor param `emergency_recovery_enabled=None` (None = auto from stage/phase; True/False = explicit override)
+- `_reset_training()`: resolves effective `emer_recovery`, filters RECOVERY from `active_modes` when disabled, logs mode changes between episodes with `[MODE CHANGE]` prefix, asserts `mode == STABILIZE` when phase is `stabilize`
+- `step()`: asserts `self._mode == STABILIZE` every step when training in stabilize phase; adds telemetry to `info`: `curriculum_phase`, `commanded_mode`, `active_mode`, `recovery_triggered`, `recovery_reason`
+
+### `main.py`
+- Added `emergency_recovery_enabled` config comment with documented per-phase defaults
+
+### `train.py`
+- `_make_env()` parses `emergency_recovery_enabled` from config and passes it to env kwargs
+- `LiveCallback._on_step()` exposes `active_mode`, `commanded_mode`, `recovery_triggered`, `recovery_reason` in the shared state patch
+
+### `render/pygame_renderer.py`
+- CURRICULUM section now shows `Phase: STABILIZE` and `Mode: STABILIZE` as labeled rows instead of a single unlabeled phase name + separate OBJECTIVE header — RECOVERY is never shown during stabilize training because `active_mode` will always be STABILIZE

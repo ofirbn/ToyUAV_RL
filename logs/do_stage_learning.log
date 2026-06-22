@@ -1,0 +1,43 @@
+Prompt: prompts\do_stage_learning.txt 
+-------------------------------------------- 
+Here's a summary of everything implemented:
+
+---
+
+## Curriculum-based staged training — implemented
+
+### What was built
+
+**`sim/curriculum.py`** — full rewrite with:
+- `StageDifficulty` dataclass: per-stage env randomization ranges (altitude, speed, roll perturbation, waypoint distance, approach distance, etc.)
+- `StageConfig` dataclass: name, active modes, difficulty, success threshold, description
+- `STAGES` list — 9 stages in the exact order you specified
+- `CurriculumManager` class — auto-advances when rolling success rate ≥ 80% over 100 episodes; state persisted to `models/curriculum_state.json` so training survives restarts
+
+**`envs/fixed_wing_env.py`** — updated:
+- Accepts `curriculum_manager=` kwarg; all 4 DummyVecEnv envs share the same manager object (single training thread, no race condition)
+- `_reset_training()` now uses per-stage difficulty for all randomization ranges
+- `_waypoint_reached` flag tracked in `step()`
+- `_episode_success()` — meaningful success condition for each mode (not just "no crash")
+- Reports `episode_success`, `curriculum_stage`, `curriculum_advanced` in `info` when episode ends
+
+**`train.py`** — updated:
+- `_make_curriculum(cfg)` — creates `CurriculumManager` when `curriculum=true`
+- `LiveCallback` reads stage from `env0._curriculum` dynamically, pushes gold `STAGE -> X` events on advancement, logs `status_str()` to console
+
+**`config.txt`** — changed default from `curriculum_phase=mixed` to `curriculum_phase=stabilize` so new runs start from the beginning.
+
+### How it works at runtime
+
+```
+[CURRICULUM] Starting at stage 'stabilize'
+...100 episodes of STABILIZE-only training...
+============================================================
+  CURRICULUM ADVANCE #1
+  'stabilize'  ->  'cruise'
+  Cruise and unusual-attitude recovery.
+  Modes: ['STABILIZE', 'RECOVERY']
+============================================================
+```
+
+Mixed missions are only reached after mastering stabilize → cruise → altitude → heading → waypoint → loiter → approach → landing.

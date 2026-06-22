@@ -1,0 +1,27 @@
+Prompt: prompts\fix_curriculum_bug.txt 
+-------------------------------------------- 
+Everything looks correct. All changes are in place.
+
+Here's a summary of what was done and why each fix works:
+
+---
+
+**Root cause**: The physics model has an actuator rate-limiter (`SURF_RATE_LIMIT = 0.6 units/s`, so max 0.06 per 0.1s step). PPO's raw output can jump ±0.3 while the real surface only moves ±0.06. The old metric measured PPO action deltas — always large regardless of actual flight smoothness.
+
+---
+
+**Changes made:**
+
+**`envs/fixed_wing_env.py`**
+- `_prev_surface` tracks `[elevator_pos, aileron_pos, rudder_pos]` from `AircraftState` (actual physics positions, post-lag)
+- Each step: compute delta from previous actual positions, apply **0.01 deadzone** (micro-corrections < 1% are trimming, not oscillation), accumulate L2 norm
+- Added `ctrl_osc_step` and `ctrl_osc_ep_mean` to `info` dict for real-time debug visibility
+- The reward's smoothness penalty (`delta` on raw PPO actions) is **unchanged** — it's a different purpose
+
+**`sim/curriculum.py`**
+- `MasteryGate.max_phase_steps` added — force-advance safety net, 0 = disabled
+- Stabilize gate: `max_ctrl_osc` `0.28 → 0.05` (new scale: rate-limiter caps actual delta at 0.104, smooth flight → near 0)
+- Stabilize gate: `max_phase_steps = 2_000_000` — forced unlock if agent is stuck despite good behavior
+- `CurriculumManager._phase_steps` counter — accumulates `ep.ep_length` per episode, resets on stage advance
+- `record_episode()` checks force-advance condition and prints diagnostic message
+- `status_str()` now shows `osc=0.0023/0.050` format (4dp vs threshold) and `phase_steps=1,234,567/2,000,000`

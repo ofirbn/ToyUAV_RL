@@ -1,0 +1,30 @@
+Prompt: prompts\fix_loiter_2nd_try.txt 
+-------------------------------------------- 
+All changes are in. Here's the complete summary:
+
+---
+
+**Changes made — 3 files, 7 values:**
+
+**`aircraft.py` — roll authority and rudder:**
+| Parameter | Before | After | Effect |
+|---|---|---|---|
+| `AIL_GAIN` | 0.70 | **0.80** | Max bank: 33.4° → 45.8° |
+| `ROLL_DAMP` | 9.0 | **6.0** | Roll TC at 15 m/s: 3.3 s → 2.7 s |
+| `ROLL_STAB` | 1.2 | **1.0** | Less dihedral fighting the bank |
+| `RUDD_GAIN` | 0.06 | **0.04** | Weaker yaw-steering via rudder |
+
+System is still overdamped (ζ=2.0 at 15 m/s) — no oscillation.
+
+**`sim/curriculum.py` — loiter radii:**
+| Stage | Before | After | Required bank at 15 m/s |
+|---|---|---|---|
+| loiter | (30, 70) m | **(60, 100) m** | 16–21° (was up to 37°) |
+| mixed | (25, 80) m | **(50, 100) m** | 16–24° |
+
+Previously a 30 m orbit demanded 37.4° bank — physically impossible with the old AIL_GAIN/ROLL_STAB ceiling of 33.4°.
+
+**`envs/fixed_wing_env.py`:**
+- `force_mode` loiter default radius: 60 → **80 m**
+
+**Expected outcome:** Commanded bank of 16–21° sits well within the new 45.8° ceiling, aileron demand drops out of saturation, rudder no longer needs to compensate for a bank the aircraft can't achieve. The roll response is ~35% faster but remains smooth.

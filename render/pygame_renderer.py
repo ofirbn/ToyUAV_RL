@@ -16,6 +16,7 @@ Renderer is READ-ONLY: it never calls env.step() or model.predict().
 Camera modes: F1=chase  F2=side  F3=top  F4=cockpit  (toggled in main loop)
 """
 
+import collections
 import math
 import pygame
 import numpy as np
@@ -82,6 +83,14 @@ GRAPH_COLORS = {
     "policy_loss": (255, 180,  40),
     "value_loss":  ( 80, 160, 255),
 }
+
+_CURRICULUM_PHASES = [
+    "stabilize", "altitude_hold", "heading_hold",
+    "waypoint", "loiter", "approach", "landing",
+    "recovery", "mixed",
+]
+
+_CONFIG_PATH = "config.txt"
 
 
 # ═══════════════════════════════════════════════════════════ helpers ═════════
@@ -193,6 +202,14 @@ class Renderer:
         # Off-screen surface for 3-D viewport (avoids bleed into panels)
         self._view_surf = pygame.Surface((VIEW_W, VIEW_H))
 
+        # Pre-training config screen state
+        self._cfg_draft    = {}
+        self._cfg_widgets  = {}
+        self._cfg_dragging = None
+
+        # Cross-mode diagnostics: rolling vz buffer for vertical oscillation score
+        self._diag_vz_buf: collections.deque = collections.deque(maxlen=60)
+
     # ═══════════════════════════════════════════════════ debug mode API ══════
 
     @property
@@ -229,6 +246,115 @@ class Renderer:
         self._dbg_pitch = _clamp(self._dbg_pitch, -math.pi/2,   math.pi/2)
         self._dbg_yaw   = math.fmod(self._dbg_yaw, 2 * math.pi)
 
+    def _draw_cross_mode_diag(self, surf: pygame.Surface, d: dict,
+                              mode: FlightMode, s) -> None:
+        """Cross-mode behavior diagnostics — bottom-left of 3-D view."""
+        W_D, H_D = 256, 182
+        X_D      = 6
+        Y_D      = VIEW_H - H_D - 6
+
+        panel = pygame.Surface((W_D, H_D), pygame.SRCALPHA)
+        panel.fill((6, 8, 20, 210))
+        pygame.draw.rect(panel, (40, 60, 100, 220), (0, 0, W_D, H_D), 1)
+        surf.blit(panel, (X_D, Y_D))
+
+        fnt = self._font_sm
+
+        def drow(label, value, ry, vcol=WHITE):
+            ls = fnt.render(label, True, DIM)
+            vs = fnt.render(value, True, vcol)
+            surf.blit(ls, (X_D + 4,               Y_D + ry))
+            surf.blit(vs, (X_D + W_D - vs.get_width() - 4, Y_D + ry))
+
+        ry = 4
+        # Header
+        hdr = fnt.render("CROSS-MODE DIAGNOSTICS", True, CYAN)
+        surf.blit(hdr, (X_D + (W_D - hdr.get_width()) // 2, Y_D + ry))
+        ry += 13
+        pygame.draw.line(surf, (40, 60, 100),
+                         (X_D + 2, Y_D + ry), (X_D + W_D - 2, Y_D + ry), 1)
+        ry += 4
+
+        # Mode one-hot — 8 colored squares, active bit highlighted
+        mode_int = int(d.get("mode", 0))
+        sq = 11; gap = 2
+        sx = X_D + 4
+        for i in range(8):
+            mc  = MODE_COLORS.get(FlightMode(i), DIM)
+            bg  = mc if i == mode_int else (20, 25, 40)
+            brd = mc if i == mode_int else (50, 60, 80)
+            pygame.draw.rect(surf, bg,  (sx + i * (sq + gap), Y_D + ry, sq, sq))
+            pygame.draw.rect(surf, brd, (sx + i * (sq + gap), Y_D + ry, sq, sq), 1)
+        mn = fnt.render(MODE_NAMES[mode_int], True, MODE_COLORS.get(mode, WHITE))
+        surf.blit(mn, (sx + 8 * (sq + gap) + 3, Y_D + ry - 1))
+        ry += sq + 5
+
+        # Target vector direction (horizontal bearing + elevation to target)
+        tpos = np.array(d.get("target_position", [0., 0., 50.]), dtype=float)
+        tdx, tdy, tdz = tpos - s.pos
+        tgt_bearing = math.degrees(math.atan2(tdx, -tdy)) % 360
+        tgt_dist    = float(np.linalg.norm([tdx, tdy, tdz]))
+        tgt_elev    = math.degrees(math.atan2(tdz, max(math.sqrt(tdx**2+tdy**2), 0.1)))
+        drow("TGT BRG", f"{tgt_bearing:5.1f}°", ry, DIM)
+        ry += 13
+        drow("TGT ELEV", f"{tgt_elev:+5.1f}°", ry, DIM)
+        ry += 13
+
+        # Heading error (yaw vs target heading)
+        tgt_hdg    = float(d.get("target_heading", s.yaw))
+        hdg_err    = math.degrees(math.atan2(math.sin(s.yaw - tgt_hdg),
+                                             math.cos(s.yaw - tgt_hdg)))
+        hdg_col = GREEN if abs(hdg_err) < 10 else (AMBER if abs(hdg_err) < 30 else RED)
+        drow("HDG ERR", f"{hdg_err:+6.1f}°", ry, hdg_col)
+        ry += 13
+
+        # Altitude error
+        alt_err = float(d.get("altitude_error", s.pos[2] - tpos[2]))
+        alt_col = GREEN if abs(alt_err) < 10 else (AMBER if abs(alt_err) < 30 else RED)
+        drow("ALT ERR", f"{alt_err:+6.1f} m", ry, alt_col)
+        ry += 13
+
+        pygame.draw.line(surf, (30, 40, 65),
+                         (X_D + 2, Y_D + ry), (X_D + W_D - 2, Y_D + ry), 1)
+        ry += 4
+
+        # Turn rate
+        turn_dps = math.degrees(abs(s.yaw_rate))
+        turn_col = GREEN if turn_dps < 5 else (AMBER if turn_dps < 20 else RED)
+        drow("TURN RATE", f"{turn_dps:5.1f}°/s", ry, turn_col)
+        ry += 13
+
+        # Trajectory curvature = |yaw_rate| / airspeed  (rad/m)
+        curvature = abs(s.yaw_rate) / max(s.airspeed, 1.0)
+        cur_col = GREEN if curvature < 0.05 else (AMBER if curvature < 0.15 else RED)
+        drow("CURVATURE", f"{curvature:.4f}/m", ry, cur_col)
+        ry += 13
+
+        # Straight-line score  (1 = perfectly straight, 0 = tight turn)
+        straight = math.exp(-abs(s.yaw_rate) * 3.0)
+        str_col = GREEN if straight > 0.8 else (AMBER if straight > 0.5 else RED)
+        drow("STRAIGHT", f"{straight:.3f}", ry, str_col)
+        ry += 13
+
+        # Orbit score (only meaningful in LOITER)
+        if mode == FlightMode.LOITER:
+            orb_err = float(d.get("loiter_radial_error", 0.0))
+            orb_des = max(float(d.get("loiter_radius_desired", 1.0)), 1.0)
+            orb_frac = abs(orb_err) / orb_des
+            orb_col = GREEN if orb_frac < 0.1 else (AMBER if orb_frac < 0.3 else RED)
+            drow("ORBIT SCR", f"{max(0.0, 1.0 - orb_frac):.3f}", ry, orb_col)
+        else:
+            drow("ORBIT SCR", "N/A", ry, DIM)
+        ry += 13
+
+        # Vertical oscillation score (std of last 60 vz samples)
+        if len(self._diag_vz_buf) >= 5:
+            vz_osc = float(np.std(list(self._diag_vz_buf)))
+        else:
+            vz_osc = abs(float(d.get("vertical_speed", 0.0)))
+        vz_col = GREEN if vz_osc < 0.5 else (AMBER if vz_osc < 2.0 else RED)
+        drow("V-OSC", f"{vz_osc:.3f}", ry, vz_col)
+
     def _draw_debug_overlay(self, surf: pygame.Surface) -> None:
         bx, bw, bh = 10, 310, 130
         by = VIEW_H - bh - 50
@@ -259,6 +385,8 @@ class Renderer:
         cam    = int(d.get("camera_mode", 0))
         hist   = d.get("_hist", {})
 
+        self._diag_vz_buf.append(float(d.get("vertical_speed", s.vel[2])))
+
         scr = self._screen
         scr.fill(BG)
 
@@ -276,6 +404,22 @@ class Renderer:
         pygame.draw.line(scr, PANEL_BDR, (LEFT_W, 0),       (LEFT_W, VIEW_H),  1)
         pygame.draw.line(scr, PANEL_BDR, (LEFT_W+VIEW_W, 0),(LEFT_W+VIEW_W, VIEW_H), 1)
         pygame.draw.line(scr, PANEL_BDR, (0, VIEW_H),       (TOTAL_W, VIEW_H), 1)
+
+        # ── pipeline phase banner (drawn last so it's always on top) ─────────
+        pl = str(d.get("pipeline_phase_label", ""))
+        if pl:
+            _PCOLS = {"1": (255, 160, 0), "2": (0, 200, 255), "3": (0, 220, 100)}
+            col = (200, 180, 255)
+            for k, c in _PCOLS.items():
+                if f"[{k}/3]" in pl:
+                    col = c
+                    break
+            bh = 44
+            pygame.draw.rect(scr, (8, 10, 25), (0, 0, TOTAL_W, bh))
+            pygame.draw.line(scr, col, (0, bh - 1), (TOTAL_W, bh - 1), 2)
+            bs = self._font_lg.render(pl, True, col)
+            scr.blit(bs, (TOTAL_W // 2 - bs.get_width() // 2,
+                          (bh - bs.get_height()) // 2 + 1))
 
         pygame.display.flip()
 
@@ -349,6 +493,12 @@ class Renderer:
             done_s = self._font_md.render("TRAINING COMPLETE", True, GREEN)
             vs.blit(done_s, (VIEW_W//2 - done_s.get_width()//2, 8))
 
+        # Pipeline phase banner (recording / BC / PPO label)
+        pl = str(d.get("pipeline_phase_label", ""))
+        if pl:
+            pl_s = self._font_md.render(pl, True, AMBER)
+            vs.blit(pl_s, (VIEW_W // 2 - pl_s.get_width() // 2, 52))
+
         # Waypoint distance + arrival overlay
         wp_dist        = float(d.get("wp_curr_dist", -1.0))
         wp_state       = str(d.get("wp_state", "approaching"))
@@ -370,6 +520,9 @@ class Renderer:
 
         # Event overlay (bottom of view)
         self._draw_events(vs, d.get("events", []))
+
+        # Cross-mode diagnostics overlay (bottom-left of 3D view)
+        self._draw_cross_mode_diag(vs, d, mode, s)
 
         # Debug mode overlay
         if self._debug_mode:
@@ -1322,6 +1475,324 @@ class Renderer:
         mn = self._font_sm.render(f"{dmin:.2f}", True, (50,60,80))
         scr.blit(mx, (x+2, y+1))
         scr.blit(mn, (x+2, y+h-12))
+
+    # ══════════════════════════════════════ pre-training config screen ══════════
+
+    def init_config_screen(self, cfg: dict) -> None:
+        """Populate _cfg_draft from cfg dict (values are strings from config.txt)."""
+        def _bool(key, default=False):
+            return cfg.get(key, str(default)).lower() in ("true", "1", "yes")
+        def _float(key, default=0.0):
+            try:   return float(cfg.get(key, default))
+            except: return float(default)
+        def _str(key, default=""):
+            return str(cfg.get(key, default))
+
+        self._cfg_draft = {
+            "curriculum":           _bool("curriculum",            True),
+            "curriculum_phase":     _str("curriculum_phase",       "stabilize"),
+            "force_new":            _bool("force_new",             False),
+            "stall_speed":          _float("stall_speed",          6.0),
+            "action_smooth_weight": _float("action_smooth_weight", 0.03),
+            "wireframe":            _bool("wireframe",             False),
+        }
+        self._cfg_widgets  = {}
+        self._cfg_dragging = None
+
+    def get_config_draft(self) -> dict:
+        """Return _cfg_draft as a string dict suitable for merging into cfg."""
+        d = self._cfg_draft
+        return {
+            "curriculum":           str(d['curriculum']).lower(),
+            "curriculum_phase":     d['curriculum_phase'],
+            "force_new":            str(d['force_new']).lower(),
+            "stall_speed":          f"{d['stall_speed']:.1f}",
+            "action_smooth_weight": f"{d['action_smooth_weight']:.3f}",
+            "wireframe":            str(d['wireframe']).lower(),
+        }
+
+    def save_config_to_file(self, cfg_draft: dict) -> None:
+        """Merge cfg_draft into config.txt, preserving all other keys."""
+        lines = []
+        try:
+            with open(_CONFIG_PATH) as f:
+                lines = f.readlines()
+        except Exception:
+            pass
+        written = set()
+        out = []
+        for line in lines:
+            stripped = line.strip()
+            if "=" in stripped and not stripped.startswith("#"):
+                k = stripped.split("=", 1)[0].strip()
+                if k in cfg_draft:
+                    out.append(f"{k}={cfg_draft[k]}\n")
+                    written.add(k)
+                    continue
+            out.append(line if line.endswith("\n") else line + "\n")
+        for k, v in cfg_draft.items():
+            if k not in written:
+                out.append(f"{k}={v}\n")
+        try:
+            with open(_CONFIG_PATH, "w") as f:
+                f.writelines(out)
+            print(f"[CFG] Saved {_CONFIG_PATH}")
+        except Exception as e:
+            print(f"[CFG] Save failed: {e}")
+
+    def render_config_screen(self) -> None:
+        """Draw the pre-training configuration screen and flip display."""
+        scr = self._screen
+        scr.fill(BG)
+
+        PW, PH = 740, 510
+        px = (self.W - PW) // 2
+        py = (self.H - PH) // 2
+
+        self._cfg_widgets = {}
+        d   = self._cfg_draft
+        lx  = px + 24
+        rw  = PW - 48
+        ry  = py + 50
+
+        # Card
+        pygame.draw.rect(scr, (8, 12, 28), (px, py, PW, PH))
+        pygame.draw.rect(scr, CYAN,        (px, py, PW, PH), 1)
+
+        # Title bar
+        pygame.draw.rect(scr, (10, 20, 50), (px, py, PW, 36))
+        title = self._font_lg.render("ToyUAV RL  —  Launch Configuration", True, CYAN)
+        scr.blit(title, (px + PW // 2 - title.get_width() // 2, py + 7))
+
+        def divider():
+            nonlocal ry
+            pygame.draw.line(scr, PANEL_BDR, (lx, ry), (lx + rw, ry), 1)
+            ry += 6
+
+        def section(text):
+            nonlocal ry
+            divider()
+            s = self._font_hdr.render(text, True, CYAN)
+            scr.blit(s, (lx, ry))
+            ry += 20
+
+        def toggle_widget(key, label):
+            nonlocal ry
+            val    = d[key]
+            col    = GREEN if val else (50, 55, 75)
+            bdr    = GREEN if val else PANEL_BDR
+            tw, th = 60, 22
+            pygame.draw.rect(scr, col, (lx, ry, tw, th), border_radius=4)
+            pygame.draw.rect(scr, bdr, (lx, ry, tw, th), 1, border_radius=4)
+            ts = self._font_sm.render("ON" if val else "OFF", True, WHITE)
+            scr.blit(ts, (lx + (tw - ts.get_width()) // 2,
+                          ry + (th - ts.get_height()) // 2))
+            self._cfg_widgets[f"{key}_toggle"] = pygame.Rect(lx, ry, tw, th)
+            ls = self._font_sm.render(label, True, DIM)
+            scr.blit(ls, (lx + tw + 12, ry + (th - ls.get_height()) // 2))
+            ry += th + 10
+
+        def slider_widget(key, label, lo, hi, fmt):
+            nonlocal ry
+            val = d[key]
+            scr.blit(self._font_sm.render(label, True, DIM), (lx, ry))
+            ry += 16
+            sw = rw - 90; sh = 22; sx = lx + 8
+            pygame.draw.rect(scr, (30, 35, 55), (sx, ry + sh // 2 - 3, sw, 6),
+                             border_radius=3)
+            frac = _clamp((val - lo) / (hi - lo), 0.0, 1.0)
+            fw   = int(frac * sw)
+            if fw > 0:
+                pygame.draw.rect(scr, AMBER, (sx, ry + sh // 2 - 3, fw, 6),
+                                 border_radius=3)
+            tx = sx + fw
+            pygame.draw.circle(scr, WHITE, (tx, ry + sh // 2), 9)
+            pygame.draw.circle(scr, AMBER, (tx, ry + sh // 2), 7)
+            vs = self._font_md.render(fmt(val), True, AMBER)
+            scr.blit(vs, (sx + sw + 12, ry + sh // 2 - vs.get_height() // 2))
+            self._cfg_widgets[f"{key}_slider"] = pygame.Rect(sx - 9, ry, sw + 18, sh)
+            ry += sh + 10
+
+        def cycle_widget(key, options, label):
+            nonlocal ry
+            curr = d[key]
+            bw, bh = 28, 22
+            # Prev
+            pygame.draw.rect(scr, (35, 45, 65), (lx, ry, bw, bh), border_radius=3)
+            ps = self._font_sm.render("◄", True, CYAN)
+            scr.blit(ps, (lx + (bw - ps.get_width()) // 2,
+                          ry + (bh - ps.get_height()) // 2))
+            self._cfg_widgets[f"{key}_prev"] = pygame.Rect(lx, ry, bw, bh)
+            # Value
+            vs = self._font_md.render(curr.upper().replace("_", " "), True, WHITE)
+            vx = lx + bw + 10
+            scr.blit(vs, (vx, ry + (bh - vs.get_height()) // 2))
+            # Next
+            nx = vx + vs.get_width() + 10
+            pygame.draw.rect(scr, (35, 45, 65), (nx, ry, bw, bh), border_radius=3)
+            ns = self._font_sm.render("►", True, CYAN)
+            scr.blit(ns, (nx + (bw - ns.get_width()) // 2,
+                          ry + (bh - ns.get_height()) // 2))
+            self._cfg_widgets[f"{key}_next"] = pygame.Rect(nx, ry, bw, bh)
+            # Right-aligned label
+            ls = self._font_sm.render(label, True, DIM)
+            scr.blit(ls, (lx + rw - ls.get_width(), ry + (bh - ls.get_height()) // 2))
+            ry += bh + 10
+
+        def step_widget(key, label, fmt):
+            nonlocal ry
+            val    = d[key]
+            bw, bh = 28, 22
+            # Minus
+            pygame.draw.rect(scr, (35, 45, 65), (lx, ry, bw, bh), border_radius=3)
+            ms = self._font_sm.render("−", True, CYAN)
+            scr.blit(ms, (lx + (bw - ms.get_width()) // 2,
+                          ry + (bh - ms.get_height()) // 2))
+            self._cfg_widgets[f"{key}_minus"] = pygame.Rect(lx, ry, bw, bh)
+            # Value
+            vs = self._font_sm.render(fmt(val), True, WHITE)
+            vx = lx + bw + 10
+            scr.blit(vs, (vx, ry + (bh - vs.get_height()) // 2))
+            # Plus
+            nx = vx + max(vs.get_width(), 70) + 10
+            pygame.draw.rect(scr, (35, 45, 65), (nx, ry, bw, bh), border_radius=3)
+            pl = self._font_sm.render("+", True, CYAN)
+            scr.blit(pl, (nx + (bw - pl.get_width()) // 2,
+                          ry + (bh - pl.get_height()) // 2))
+            self._cfg_widgets[f"{key}_plus"] = pygame.Rect(nx, ry, bw, bh)
+            # Right-aligned label
+            ls = self._font_sm.render(label, True, DIM)
+            scr.blit(ls, (lx + rw - ls.get_width(), ry + (bh - ls.get_height()) // 2))
+            ry += bh + 10
+
+        # ── CURRICULUM ─────────────────────────────────────────────────────────
+        section("CURRICULUM")
+        toggle_widget("curriculum",  "Enable auto-curriculum progression")
+        cycle_widget("curriculum_phase", _CURRICULUM_PHASES, "Starting Phase")
+        toggle_widget("force_new",   "Force new model  (discard saved weights)")
+
+        # ── ENVIRONMENT ────────────────────────────────────────────────────────
+        section("ENVIRONMENT")
+        step_widget("stall_speed",          "Stall Speed (m/s)",    lambda v: f"{v:.1f} m/s")
+        step_widget("action_smooth_weight", "Action Smoothing",     lambda v: f"{v:.3f}")
+        toggle_widget("wireframe",          "Wireframe rendering")
+
+        # ── BUTTONS ────────────────────────────────────────────────────────────
+        ry += 4
+        divider()
+        ry += 10
+        bw2 = 230; bh2 = 36; gap = 24
+        bx1 = px + (PW - bw2 * 2 - gap) // 2
+        bx2 = bx1 + bw2 + gap
+
+        pygame.draw.rect(scr, (14, 35, 20), (bx1, ry, bw2, bh2), border_radius=5)
+        pygame.draw.rect(scr, (40, 120, 60), (bx1, ry, bw2, bh2), 1, border_radius=5)
+        sv = self._font_md.render("SAVE CONFIG.TXT", True, (80, 200, 100))
+        scr.blit(sv, (bx1 + (bw2 - sv.get_width()) // 2,
+                      ry  + (bh2 - sv.get_height()) // 2))
+        self._cfg_widgets["save_cfg"] = pygame.Rect(bx1, ry, bw2, bh2)
+
+        pygame.draw.rect(scr, (10, 50, 80), (bx2, ry, bw2, bh2), border_radius=5)
+        pygame.draw.rect(scr, CYAN,         (bx2, ry, bw2, bh2), 2, border_radius=5)
+        st = self._font_md.render("▶  START TRAINING", True, CYAN)
+        scr.blit(st, (bx2 + (bw2 - st.get_width()) // 2,
+                      ry  + (bh2 - st.get_height()) // 2))
+        self._cfg_widgets["start_btn"] = pygame.Rect(bx2, ry, bw2, bh2)
+
+        # Hint
+        ry += bh2 + 12
+        hint = self._font_sm.render("ENTER = start   ESC = quit", True, (50, 60, 80))
+        scr.blit(hint, (px + PW // 2 - hint.get_width() // 2, ry))
+
+        pygame.display.flip()
+
+    def handle_config_event(self, event):
+        """Process a pygame event for the config screen.
+        Returns 'start', 'quit', or None."""
+        widgets = self._cfg_widgets
+        d       = self._cfg_draft
+
+        if event.type == pygame.QUIT:
+            return "quit"
+
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return "quit"
+            if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                return "start"
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            mx, my = event.pos
+
+            # Slider drag start
+            for name, rect in widgets.items():
+                if name.endswith("_slider") and rect.collidepoint(mx, my):
+                    self._cfg_dragging = name
+                    self._update_cfg_slider(name, mx)
+                    return None
+
+            # Toggle buttons
+            for name, rect in widgets.items():
+                if name.endswith("_toggle") and rect.collidepoint(mx, my):
+                    key = name[:-7]
+                    d[key] = not d[key]
+                    return None
+
+            # Cycle prev / next
+            for name, rect in widgets.items():
+                if name.endswith("_prev") and rect.collidepoint(mx, my):
+                    key    = name[:-5]
+                    phases = _CURRICULUM_PHASES
+                    idx    = phases.index(d[key]) if d[key] in phases else 0
+                    d[key] = phases[(idx - 1) % len(phases)]
+                    return None
+                if name.endswith("_next") and rect.collidepoint(mx, my):
+                    key    = name[:-5]
+                    phases = _CURRICULUM_PHASES
+                    idx    = phases.index(d[key]) if d[key] in phases else 0
+                    d[key] = phases[(idx + 1) % len(phases)]
+                    return None
+
+            # Step buttons
+            _step_map = {
+                "stall_speed_minus":          ("stall_speed",          -0.5,   3.0, 15.0,  False),
+                "stall_speed_plus":           ("stall_speed",          +0.5,   3.0, 15.0,  False),
+                "action_smooth_weight_minus": ("action_smooth_weight", -0.005, 0.0,  0.2,  False),
+                "action_smooth_weight_plus":  ("action_smooth_weight", +0.005, 0.0,  0.2,  False),
+            }
+            for name, (key, delta, lo, hi, is_int) in _step_map.items():
+                if name in widgets and widgets[name].collidepoint(mx, my):
+                    v      = d.get(key, 0)
+                    result = _clamp(v + delta, lo, hi)
+                    d[key] = int(result) if is_int else round(result, 3)
+                    return None
+
+            # Action buttons
+            if "save_cfg" in widgets and widgets["save_cfg"].collidepoint(mx, my):
+                self.save_config_to_file(self.get_config_draft())
+                return None
+            if "start_btn" in widgets and widgets["start_btn"].collidepoint(mx, my):
+                return "start"
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self._cfg_dragging = None
+
+        elif event.type == pygame.MOUSEMOTION:
+            if self._cfg_dragging:
+                self._update_cfg_slider(self._cfg_dragging, event.pos[0])
+
+        return None
+
+    def _update_cfg_slider(self, name: str, mx: int) -> None:
+        rect = self._cfg_widgets.get(name)
+        if not rect:
+            return
+        key  = name[:-7]   # strip "_slider"
+        frac = _clamp((mx - rect.x) / rect.w, 0.0, 1.0)
+        lo_hi = {}
+        if key in lo_hi:
+            lo, hi = lo_hi[key]
+            self._cfg_draft[key] = round(lo + frac * (hi - lo), 2)
 
     # ═══════════════════════════════════════════════════════ legacy API ═══════
 
