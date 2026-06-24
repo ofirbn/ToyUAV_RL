@@ -8,11 +8,10 @@ Supported modes:
     train            — headless PPO training
     train_visual     — PPO training with live pygame dashboard
     pipeline_visual  — record teacher → BC → PPO, all in one pygame window
-    train_expert     — headless PPO training of one isolated mode expert, or
-                       all experts (set expert_mode=<mode> or expert_mode=all;
-                       saved to models/experts/<mode>.zip)
-    train_expert_visual — like train_expert but with the live pygame dashboard
-                       (one expert at a time; expert_mode=all runs headless)
+    train_expert     — PPO training of one isolated mode expert, or all experts
+                       (set expert_mode=<mode> or expert_mode=all; saved to
+                       models/experts/<mode>.zip). Set expert_visual=true for the
+                       live pygame dashboard (single expert; 'all' stays headless)
     visualize        — run trained model in pygame window
     demo             — alias for visualize
 """
@@ -89,10 +88,16 @@ def main():
         train_pipeline_visual(cfg)
 
     elif mode in ("train_expert", "expert"):
-        from tools.train_expert_mode import train_expert
-        train_expert(cfg)
+        # One expert mode; the expert_visual flag selects the live dashboard.
+        if cfg.get("expert_visual", "false").lower() == "true":
+            from tools.train_expert_mode import train_expert_visual
+            train_expert_visual(cfg)
+        else:
+            from tools.train_expert_mode import train_expert
+            train_expert(cfg)
 
     elif mode in ("train_expert_visual", "expert_visual"):
+        # Back-compat alias (e.g. CLI / older config.txt).
         from tools.train_expert_mode import train_expert_visual
         train_expert_visual(cfg)
 

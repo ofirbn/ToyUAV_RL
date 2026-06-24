@@ -19,7 +19,7 @@ CURRICULUM_STAGES = [
     "waypoint", "loiter", "approach", "landing", "mixed",
 ]
 MODES = ["train_visual", "pipeline_visual", "train", "train_expert",
-         "train_expert_visual", "visualize", "demo"]
+         "visualize", "demo"]
 
 # Experts trainable via mode=train_expert (saved to models/experts/<mode>.zip).
 # "all" trains every expert sequentially.
@@ -111,8 +111,20 @@ class ConfigGUI:
         self.expert_mode_var = tk.StringVar(
             value=cfg.get("expert_mode", "approach"))
         self._expert_lbl, self._expert_cb, r = self._combo(
-            outer, r, "Expert mode  (train_expert*)", self.expert_mode_var,
+            outer, r, "Expert mode  (train_expert)", self.expert_mode_var,
             EXPERT_MODES, return_widgets=True)
+
+        # Visualize expert training in the live pygame dashboard (single expert;
+        # expert_mode=all stays headless).
+        self.expert_visual_var = tk.BooleanVar(
+            value=cfg.get("expert_visual", "true").lower() == "true")
+        self._expert_vis_chk = ttk.Checkbutton(
+            outer, text="Visualize expert training (live dashboard)",
+            variable=self.expert_visual_var)
+        self._expert_vis_chk.grid(row=r, column=0, columnspan=2,
+                                  sticky="w", pady=3)
+        r += 1
+
         self.mode_var.trace_add("write", lambda *_: self._sync_expert())
         self._sync_expert()
 
@@ -258,9 +270,10 @@ class ConfigGUI:
         self._phase_lbl.config(foreground="black" if on else "gray")
 
     def _sync_expert(self):
-        on = self.mode_var.get() in ("train_expert", "train_expert_visual")
+        on = self.mode_var.get() == "train_expert"
         self._expert_cb.config(state="readonly" if on else "disabled")
         self._expert_lbl.config(foreground="black" if on else "gray")
+        self._expert_vis_chk.config(state="normal" if on else "disabled")
 
     # ── config logic ──────────────────────────────────────────────────────────
 
@@ -270,6 +283,7 @@ class ConfigGUI:
             "mode":                 self.mode_var.get(),
             "timesteps":            self.timesteps_var.get(),
             "expert_mode":          self.expert_mode_var.get(),
+            "expert_visual":        "true" if self.expert_visual_var.get() else "false",
             "mission":              self.mission_var.get(),
             "model":                ("models/latest.zip" if scratch
                                      else self.model_var.get()),
