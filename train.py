@@ -669,7 +669,8 @@ def train(cfg: dict):
 
 # ══════════════════════════════════════════════════════ train_visual ══════════
 
-def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = False):
+def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = False,
+                 expert_jobs: list = None):
     """
     PPO training with live pygame telemetry dashboard.
 
@@ -683,6 +684,11 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
     skip_config_screen (optional): when True, skip the in-pygame config screen
         and use cfg as-is (the caller, e.g. the tkinter launcher, already
         configured it).
+    expert_jobs (optional): list of {label, phase, save_path, init_from,
+        init_from_bc} dicts. When given, the training thread trains each job
+        sequentially in this one window (used by visual "train all experts"),
+        each for `timesteps` steps, saving to its own save_path. Overrides the
+        single-model path.
     """
     import sys
     import threading
@@ -741,16 +747,20 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
     if bc_path_vis:
         print(f"  BC init    : {bc_path_vis}")
     print(f"  Window     : {W}×{H}")
-    print(f"  Save path  : {latest_path}.zip")
+    if expert_jobs:
+        print(f"  Experts    : {len(expert_jobs)} (sequential)  "
+              f"-> {', '.join(j['label'] for j in expert_jobs)}")
+    else:
+        print(f"  Save path  : {latest_path}.zip")
     print(f"{'='*55}\n")
 
     stop_event = threading.Event()
 
-    def _training_thread():
-        env      = _make_env(cfg, curriculum_mgr)
-        model    = _build_model(env, cfg, latest_path)
-        callback = LiveCallback(ss, cfg, save_prefix=save_path)
-
+    def _train_one(load_path, env_cfg, save_to, save_prefix):
+        """Build + train a single model for `timesteps`, rendering live."""
+        env      = _make_env(env_cfg, None if expert_jobs else curriculum_mgr)
+        model    = _build_model(env, env_cfg, load_path)
+        callback = LiveCallback(ss, cfg, save_prefix=save_prefix)
         remaining = timesteps
         while remaining > 0 and not stop_event.is_set():
             chunk = min(CHUNK_SIZE, remaining)
@@ -760,8 +770,40 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
                 callback            = callback,
             )
             remaining -= chunk
+        model.save(save_to)
+        try:
+            env.close()
+        except Exception:
+            pass
 
-        model.save(latest_path)
+    def _training_thread():
+        if expert_jobs:
+            n = len(expert_jobs)
+            for i, job in enumerate(expert_jobs):
+                if stop_event.is_set():
+                    break
+                ss.push_event(f"TRAINING {job['label']} ({i+1}/{n})", (120, 200, 255))
+                print(f"\n[TRAIN] === Expert {i+1}/{n}: {job['label']} "
+                      f"(phase='{job['phase']}') -> {job['save_path']}.zip ===")
+                job_cfg = {**cfg, "curriculum": "false",
+                           "curriculum_phase": job["phase"],
+                           "model": job["save_path"] + ".zip"}
+                if job.get("init_from"):
+                    job_cfg["init_from"] = job["init_from"]
+                if job.get("init_from_bc"):
+                    job_cfg["init_from_bc"] = job["init_from_bc"]
+                else:
+                    job_cfg.pop("init_from_bc", None)
+                _train_one(job["save_path"], job_cfg, job["save_path"],
+                           job["save_path"])
+                print(f"[TRAIN] Saved expert -> {job['save_path']}.zip")
+                ss.push_event(f"DONE {job['label']}", (0, 255, 120))
+            print("\n[TRAIN] All experts done.")
+            ss.update({"training_done": True})
+            ss.push_event("ALL EXPERTS COMPLETE", (0, 255, 120))
+            return
+
+        _train_one(latest_path, cfg, save_path or latest_path, save_path)
         if curriculum_mgr is not None:
             curriculum_mgr.save()
         print(f"\n[TRAIN] Saved -> {latest_path}.zip")

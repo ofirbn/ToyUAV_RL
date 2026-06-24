@@ -185,10 +185,22 @@ def train_expert_visual(cfg: dict):
     live pygame dashboard (reuses train.train_visual). expert_mode='all' is not
     shown live — it falls back to headless all-expert training."""
     em = str(cfg.get("expert_mode", "approach")).lower()
+    init_from = _norm_init_from(cfg.get("expert_init_from"))
+
     if em == "all":
-        print("[TRAIN] Visual training shows one expert at a time; 'all' runs "
-              "headless. Pick a single mode for the live dashboard.")
-        return train_expert(cfg)
+        # Train every expert sequentially in one live dashboard window.
+        jobs = [{
+            "label":        m.name,
+            "phase":        phase_for(m),
+            "save_path":    default_model_path(m),
+            "init_from":    init_from,
+            "init_from_bc": _auto_bc_path(m),
+        } for m in EXPERT_MODES]
+        print(f"[TRAIN] Visual expert training: ALL {len(jobs)} experts "
+              f"(sequential, one window)")
+        from train import train_visual
+        train_visual(cfg, skip_config_screen=True, expert_jobs=jobs)
+        return [j["save_path"] for j in jobs]
 
     mode  = resolve_mode(em)
     out   = cfg.get("expert_out") or default_model_path(mode)
