@@ -260,14 +260,22 @@ class LiveCallback(BaseCallback):
     LOG_EVERY  = 10_000
     TRAJ_EVERY = 4
 
-    def __init__(self, shared_state_module, cfg: dict):
+    def __init__(self, shared_state_module, cfg: dict, save_prefix: str = None):
         super().__init__()
         self._ss           = shared_state_module
         self._cfg          = cfg
         self._save_every   = int(cfg.get("save_every", 100_000))
-        self._best_reward_path  = _best_reward_path(cfg)
-        self._best_success_path = _best_success_path(cfg)
-        self._latest_path       = _latest_path(cfg)
+        # When save_prefix is given (e.g. expert training -> models/experts/<mode>),
+        # derive periodic/best checkpoints from it instead of the generic
+        # <model_dir>/best_reward etc., so experts don't collide on shared names.
+        if save_prefix:
+            self._best_reward_path  = save_prefix + "_best_reward"
+            self._best_success_path = save_prefix + "_best_success"
+            self._latest_path       = save_prefix
+        else:
+            self._best_reward_path  = _best_reward_path(cfg)
+            self._best_success_path = _best_success_path(cfg)
+            self._latest_path       = _latest_path(cfg)
 
         self._last_log      = 0
         self._last_save     = 0
@@ -724,7 +732,7 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
     def _training_thread():
         env      = _make_env(cfg, curriculum_mgr)
         model    = _build_model(env, cfg, latest_path)
-        callback = LiveCallback(ss, cfg)
+        callback = LiveCallback(ss, cfg, save_prefix=save_path)
 
         remaining = timesteps
         while remaining > 0 and not stop_event.is_set():
