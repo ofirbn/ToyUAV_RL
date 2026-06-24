@@ -81,6 +81,15 @@ def default_model_path(mode: FlightMode) -> str:
     return os.path.join(_EXPERTS_DIR, _MODE_SPECS[mode]["file"])
 
 
+def phase_for(mode: FlightMode) -> str:
+    """Curriculum phase string that activates `mode` under FixedWingEnv."""
+    return _MODE_SPECS[mode]["phase"]
+
+
+# Public list of modes that have an isolation phase + conventional checkpoint.
+EXPERT_MODES = list(_MODE_SPECS.keys())
+
+
 # ── Mode-specific accuracy metrics ────────────────────────────────────────────
 # Each function returns an ordered dict {metric_name: value} for the CURRENT
 # step, computed from the same quantities FixedWingEnv._episode_success() uses,

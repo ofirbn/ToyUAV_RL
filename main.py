@@ -8,6 +8,8 @@ Supported modes:
     train            — headless PPO training
     train_visual     — PPO training with live pygame dashboard
     pipeline_visual  — record teacher → BC → PPO, all in one pygame window
+    train_expert     — headless PPO training of one isolated mode expert
+                       (saved to models/experts/<mode>.zip; set expert_mode=...)
     visualize        — run trained model in pygame window
     demo             — alias for visualize
 """
@@ -83,13 +85,18 @@ def main():
         from train import train_pipeline_visual
         train_pipeline_visual(cfg)
 
+    elif mode in ("train_expert", "expert"):
+        from tools.train_expert_mode import train_expert
+        train_expert(cfg)
+
     elif mode in ("visualize", "demo"):
         from visualize import run
         run(cfg=cfg)
 
     else:
         print(f"[CONFIG] Unknown mode '{mode}'.")
-        print("  Set mode=train, train_visual, pipeline_visual, visualize, or demo in config.txt.")
+        print("  Set mode=train, train_visual, pipeline_visual, train_expert, "
+              "visualize, or demo in config.txt.")
 
 
 if __name__ == "__main__":

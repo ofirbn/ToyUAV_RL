@@ -18,7 +18,14 @@ CURRICULUM_STAGES = [
     "stabilize", "cruise", "altitude_hold", "heading_hold",
     "waypoint", "loiter", "approach", "landing", "mixed",
 ]
-MODES = ["train_visual", "pipeline_visual", "train", "visualize", "demo"]
+MODES = ["train_visual", "pipeline_visual", "train", "train_expert",
+         "visualize", "demo"]
+
+# Single-mode experts trainable via mode=train_expert (saved to models/experts/).
+EXPERT_MODES = [
+    "stabilize", "recovery", "altitude_hold", "heading_hold",
+    "waypoint", "loiter", "approach", "landing",
+]
 
 _SCRATCH     = "(train from scratch)"
 _RECORD_NEW  = "(record new demos)"
@@ -96,6 +103,16 @@ class ConfigGUI:
 
         self.save_every_var = tk.StringVar(value=cfg.get("save_every", "100000"))
         r = self._entry(outer, r, "Save every (steps)", self.save_every_var)
+
+        # Expert mode — used only when Mode = train_expert. Trains a single-mode
+        # PPO expert and saves it to models/experts/<mode>.zip.
+        self.expert_mode_var = tk.StringVar(
+            value=cfg.get("expert_mode", "approach"))
+        self._expert_lbl, self._expert_cb, r = self._combo(
+            outer, r, "Expert mode  (train_expert)", self.expert_mode_var,
+            EXPERT_MODES, return_widgets=True)
+        self.mode_var.trace_add("write", lambda *_: self._sync_expert())
+        self._sync_expert()
 
         # ── PIPELINE (pipeline_visual mode) ───────────────────────────────────
         r = self._section(outer, "PIPELINE  (pipeline_visual mode only)", r)
@@ -238,6 +255,11 @@ class ConfigGUI:
         self._phase_cb.config(state="readonly" if on else "disabled")
         self._phase_lbl.config(foreground="black" if on else "gray")
 
+    def _sync_expert(self):
+        on = self.mode_var.get() == "train_expert"
+        self._expert_cb.config(state="readonly" if on else "disabled")
+        self._expert_lbl.config(foreground="black" if on else "gray")
+
     # ── config logic ──────────────────────────────────────────────────────────
 
     def _collect(self) -> dict:
@@ -245,6 +267,7 @@ class ConfigGUI:
         return {
             "mode":                 self.mode_var.get(),
             "timesteps":            self.timesteps_var.get(),
+            "expert_mode":          self.expert_mode_var.get(),
             "mission":              self.mission_var.get(),
             "model":                ("models/latest.zip" if scratch
                                      else self.model_var.get()),
