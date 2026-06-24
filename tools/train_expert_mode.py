@@ -97,20 +97,64 @@ def train_expert_mode(mode, timesteps: int, out: str = None,
     return out
 
 
-def train_expert(cfg: dict):
-    """main.py entry point: train an expert from a parsed config.txt dict.
+def _auto_bc_path(mode):
+    """Conventional BC checkpoint for `mode` (models/bc/<phase>_bc), or None.
+    Used to warm-start each expert when training all of them and no explicit
+    --init-from-bc was given."""
+    cand = os.path.join("models", "bc", phase_for(mode) + "_bc")
+    return cand if os.path.exists(cand + ".zip") else None
 
-    Reads: expert_mode (default 'approach'), timesteps, save_every, force_new,
-    init_from_bc, expert_out (optional explicit save path)."""
-    mode = resolve_mode(cfg.get("expert_mode", "approach"))
-    return train_expert_mode(
-        mode         = mode,
+
+def train_all_experts(timesteps: int, save_every: int = 50_000,
+                      force_new: bool = False, init_from_bc: str = None,
+                      n_envs: int = N_ENVS):
+    """Train every expert in EXPERT_MODES sequentially, each to its own
+    models/experts/<mode>.zip. Each expert runs for `timesteps` steps. When no
+    explicit init_from_bc is given, each mode warm-starts from its conventional
+    BC checkpoint if one exists. Returns a list of (mode, out_path)."""
+    results = []
+    total = len(EXPERT_MODES)
+    for i, mode in enumerate(EXPERT_MODES):
+        bc = init_from_bc or _auto_bc_path(mode)
+        print(f"\n{'#'*60}")
+        print(f"#  EXPERT {i+1}/{total}: {mode.name}")
+        print(f"{'#'*60}")
+        out = train_expert_mode(
+            mode         = mode,
+            timesteps    = timesteps,
+            out          = None,
+            save_every   = save_every,
+            force_new    = force_new,
+            init_from_bc = bc,
+            n_envs       = n_envs,
+        )
+        results.append((mode, out))
+
+    print(f"\n{'='*60}")
+    print(f"  ALL {total} EXPERTS TRAINED")
+    for mode, out in results:
+        print(f"  {mode.name:<14} -> {out}.zip")
+    print(f"{'='*60}")
+    return results
+
+
+def train_expert(cfg: dict):
+    """main.py entry point: train one expert, or all, from a parsed config.txt.
+
+    Reads: expert_mode ('all' or a mode name; default 'approach'), timesteps,
+    save_every, force_new, init_from_bc, expert_out (optional explicit path,
+    single-mode only)."""
+    common = dict(
         timesteps    = int(cfg.get("timesteps", 300_000)),
-        out          = cfg.get("expert_out") or None,
         save_every   = int(cfg.get("save_every", 50_000)),
         force_new    = cfg.get("force_new", "false").lower() == "true",
         init_from_bc = cfg.get("init_from_bc") or None,
     )
+    em = str(cfg.get("expert_mode", "approach")).lower()
+    if em == "all":
+        return train_all_experts(**common)
+    return train_expert_mode(mode=resolve_mode(em),
+                             out=cfg.get("expert_out") or None, **common)
 
 
 def main(argv=None):
@@ -119,7 +163,8 @@ def main(argv=None):
     parser.add_argument("--mode", type=str, default=None,
                         help="FlightMode to train (stabilize, recovery, "
                              "altitude_hold, heading_hold, waypoint, loiter, "
-                             "approach, landing).")
+                             "approach, landing), or 'all' to train every "
+                             "expert sequentially.")
     parser.add_argument("--timesteps", type=int, default=300_000)
     parser.add_argument("--out", type=str, default=None,
                         help="Save path without .zip (default models/experts/<mode>).")
@@ -140,9 +185,21 @@ def main(argv=None):
         return
 
     if not args.mode:
-        print("[TRAIN] --mode is required (e.g. --mode landing). "
+        print("[TRAIN] --mode is required (e.g. --mode landing, or --mode all). "
               "Use --list-modes to see options.")
         sys.exit(2)
+
+    if args.mode.lower() == "all":
+        if args.out:
+            print("[TRAIN] --out is ignored with --mode all; each expert saves "
+                  "to its own models/experts/<mode>.zip.")
+        train_all_experts(
+            timesteps    = args.timesteps,
+            save_every   = args.save_every,
+            force_new    = args.force_new,
+            init_from_bc = args.init_from_bc,
+        )
+        return
 
     train_expert_mode(
         mode         = resolve_mode(args.mode),

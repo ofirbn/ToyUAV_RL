@@ -21,8 +21,10 @@ CURRICULUM_STAGES = [
 MODES = ["train_visual", "pipeline_visual", "train", "train_expert",
          "visualize", "demo"]
 
-# Single-mode experts trainable via mode=train_expert (saved to models/experts/).
+# Experts trainable via mode=train_expert (saved to models/experts/<mode>.zip).
+# "all" trains every expert sequentially.
 EXPERT_MODES = [
+    "all",
     "stabilize", "recovery", "altitude_hold", "heading_hold",
     "waypoint", "loiter", "approach", "landing",
 ]

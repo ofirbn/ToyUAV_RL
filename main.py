@@ -8,8 +8,9 @@ Supported modes:
     train            — headless PPO training
     train_visual     — PPO training with live pygame dashboard
     pipeline_visual  — record teacher → BC → PPO, all in one pygame window
-    train_expert     — headless PPO training of one isolated mode expert
-                       (saved to models/experts/<mode>.zip; set expert_mode=...)
+    train_expert     — headless PPO training of one isolated mode expert, or
+                       all experts (set expert_mode=<mode> or expert_mode=all;
+                       saved to models/experts/<mode>.zip)
     visualize        — run trained model in pygame window
     demo             — alias for visualize
 """
