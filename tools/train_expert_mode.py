@@ -43,9 +43,14 @@ N_ENVS = 4
 
 def train_expert_mode(mode, timesteps: int, out: str = None,
                       save_every: int = 50_000, force_new: bool = False,
-                      init_from_bc: str = None, n_envs: int = N_ENVS):
+                      init_from_bc: str = None, init_from: str = None,
+                      n_envs: int = N_ENVS):
     """Train one PPO expert for `mode` and save it to `out` (default
-    models/experts/<file>). Returns the resolved output path (no .zip)."""
+    models/experts/<file>). Returns the resolved output path (no .zip).
+
+    Initialization precedence (in _build_model): resume an existing expert
+    checkpoint at `out` (unless force_new) -> seed from `init_from` (e.g.
+    models/latest) -> warm-start from `init_from_bc` -> fresh random weights."""
     phase = phase_for(mode)
     out   = out or default_model_path(mode)
     os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
@@ -63,6 +68,8 @@ def train_expert_mode(mode, timesteps: int, out: str = None,
     cfg = {"force_new": "true" if force_new else "false"}
     if init_from_bc:
         cfg["init_from_bc"] = init_from_bc
+    if init_from:
+        cfg["init_from"] = init_from
     model = _build_model(env, cfg, out)
 
     weighted = get_phase_weighted_modes(phase) is not None
@@ -75,7 +82,8 @@ def train_expert_mode(mode, timesteps: int, out: str = None,
         print(f"  WARNING   : phase '{phase}' does not hard-lock {mode.name}.")
     print(f"  Timesteps : {timesteps:,}")
     print(f"  Envs      : {n_envs}  (DummyVecEnv)")
-    print(f"  Warm-start: {init_from_bc or '(none)'}")
+    print(f"  Seed from : {init_from or '(none)'}")
+    print(f"  BC init   : {init_from_bc or '(none)'}")
     print(f"  Save path : {out}.zip")
     print(f"{'='*60}\n")
 
@@ -105,13 +113,25 @@ def _auto_bc_path(mode):
     return cand if os.path.exists(cand + ".zip") else None
 
 
+def _norm_init_from(value):
+    """Normalize an expert_init_from / --init-from value to a load path or None.
+    Treats empty / '(auto)' / 'none' as 'no explicit seed' and strips .zip."""
+    if not value:
+        return None
+    v = str(value).strip()
+    if v.lower() in ("", "none", "auto") or v.lower().startswith("(auto"):
+        return None
+    return v[:-4] if v.endswith(".zip") else v
+
+
 def train_all_experts(timesteps: int, save_every: int = 50_000,
                       force_new: bool = False, init_from_bc: str = None,
-                      n_envs: int = N_ENVS):
+                      init_from: str = None, n_envs: int = N_ENVS):
     """Train every expert in EXPERT_MODES sequentially, each to its own
-    models/experts/<mode>.zip. Each expert runs for `timesteps` steps. When no
-    explicit init_from_bc is given, each mode warm-starts from its conventional
-    BC checkpoint if one exists. Returns a list of (mode, out_path)."""
+    models/experts/<mode>.zip. Each expert runs for `timesteps` steps. If
+    init_from is given (e.g. models/latest), every fresh expert seeds from it;
+    otherwise, when no explicit init_from_bc is given, each mode warm-starts
+    from its conventional BC checkpoint if one exists. Returns (mode, out)."""
     results = []
     total = len(EXPERT_MODES)
     for i, mode in enumerate(EXPERT_MODES):
@@ -126,6 +146,7 @@ def train_all_experts(timesteps: int, save_every: int = 50_000,
             save_every   = save_every,
             force_new    = force_new,
             init_from_bc = bc,
+            init_from    = init_from,
             n_envs       = n_envs,
         )
         results.append((mode, out))
@@ -142,13 +163,15 @@ def train_expert(cfg: dict):
     """main.py entry point: train one expert, or all, from a parsed config.txt.
 
     Reads: expert_mode ('all' or a mode name; default 'approach'), timesteps,
-    save_every, force_new, init_from_bc, expert_out (optional explicit path,
+    save_every, force_new, init_from_bc, expert_init_from (seed a fresh expert
+    from this model, e.g. models/latest), expert_out (optional explicit path,
     single-mode only)."""
     common = dict(
         timesteps    = int(cfg.get("timesteps", 300_000)),
         save_every   = int(cfg.get("save_every", 50_000)),
         force_new    = cfg.get("force_new", "false").lower() == "true",
         init_from_bc = cfg.get("init_from_bc") or None,
+        init_from    = _norm_init_from(cfg.get("expert_init_from")),
     )
     em = str(cfg.get("expert_mode", "approach")).lower()
     if em == "all":
@@ -183,6 +206,7 @@ def train_expert_visual(cfg: dict):
     }
     if not vis_cfg.get("init_from_bc"):
         vis_cfg["init_from_bc"] = _auto_bc_path(mode)
+    vis_cfg["init_from"] = _norm_init_from(cfg.get("expert_init_from"))
 
     print(f"[TRAIN] Visual expert training: {mode.name} "
           f"(phase='{phase}') -> {out}.zip")
@@ -208,6 +232,10 @@ def main(argv=None):
     parser.add_argument("--init-from-bc", type=str, default=None,
                         help="Warm-start PPO from a behavior-cloned checkpoint "
                              "(e.g. models/bc/all_bc).")
+    parser.add_argument("--init-from", type=str, default=None,
+                        help="Seed a fresh expert from this model checkpoint "
+                             "(e.g. models/latest). Ignored if the expert is "
+                             "resumed; takes priority over --init-from-bc.")
     parser.add_argument("--list-modes", action="store_true",
                         help="List trainable modes and exit.")
     args = parser.parse_args(argv)
@@ -232,6 +260,7 @@ def main(argv=None):
             save_every   = args.save_every,
             force_new    = args.force_new,
             init_from_bc = args.init_from_bc,
+            init_from    = _norm_init_from(args.init_from),
         )
         return
 
@@ -242,6 +271,7 @@ def main(argv=None):
         save_every   = args.save_every,
         force_new    = args.force_new,
         init_from_bc = args.init_from_bc,
+        init_from    = _norm_init_from(args.init_from),
     )
 
 

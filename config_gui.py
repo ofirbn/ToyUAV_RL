@@ -125,6 +125,19 @@ class ConfigGUI:
                                   sticky="w", pady=3)
         r += 1
 
+        # Seed a *fresh* expert from an existing model (e.g. models/latest.zip).
+        # "(auto)" = resume the expert if present, else BC / scratch. Ignored
+        # when the expert already has a checkpoint (it resumes instead).
+        _AUTO = "(auto: resume / BC / scratch)"
+        init_opts = [_AUTO] + (_scan("models", ".zip") or [])
+        init_default = cfg.get("expert_init_from", "") or _AUTO
+        if init_default not in init_opts:
+            init_opts.insert(1, init_default)
+        self.expert_init_var = tk.StringVar(value=init_default)
+        self._expert_init_lbl, self._expert_init_cb, r = self._combo(
+            outer, r, "Init new expert from", self.expert_init_var,
+            init_opts, editable=True, pin_top=True, return_widgets=True)
+
         self.mode_var.trace_add("write", lambda *_: self._sync_expert())
         self._sync_expert()
 
@@ -274,6 +287,8 @@ class ConfigGUI:
         self._expert_cb.config(state="readonly" if on else "disabled")
         self._expert_lbl.config(foreground="black" if on else "gray")
         self._expert_vis_chk.config(state="normal" if on else "disabled")
+        self._expert_init_cb.config(state="normal" if on else "disabled")
+        self._expert_init_lbl.config(foreground="black" if on else "gray")
 
     # ── config logic ──────────────────────────────────────────────────────────
 
@@ -284,6 +299,8 @@ class ConfigGUI:
             "timesteps":            self.timesteps_var.get(),
             "expert_mode":          self.expert_mode_var.get(),
             "expert_visual":        "true" if self.expert_visual_var.get() else "false",
+            "expert_init_from":     ("" if self.expert_init_var.get().startswith("(auto")
+                                     else self.expert_init_var.get()),
             "mission":              self.mission_var.get(),
             "model":                ("models/latest.zip" if scratch
                                      else self.model_var.get()),

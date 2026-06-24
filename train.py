@@ -99,6 +99,7 @@ def _make_env(cfg: dict, curriculum_manager=None) -> DummyVecEnv:
 def _build_model(env, cfg: dict, load_path: str) -> PPO:
     force_new  = cfg.get("force_new", "false").lower() == "true"
     bc_path    = cfg.get("init_from_bc", None)
+    init_path  = cfg.get("init_from", None)
 
     # 1. Resume from latest checkpoint (normal flow)
     if not force_new and os.path.exists(load_path + ".zip"):
@@ -111,6 +112,22 @@ def _build_model(env, cfg: dict, load_path: str) -> PPO:
 
     elif force_new:
         print("[TRAIN] force_new=true — starting from scratch.")
+
+    # 1b. Warm-start (seed) from an explicitly selected checkpoint — e.g. seed a
+    #     new expert from models/latest.zip. Only reached when NOT resuming, so a
+    #     half-trained expert is never overwritten. Takes priority over BC.
+    if init_path:
+        init_file = init_path if init_path.endswith(".zip") else init_path + ".zip"
+        if os.path.exists(init_file):
+            try:
+                model = PPO.load(init_file[:-4], env=env)
+                print(f"[TRAIN] Seeded from selected model {init_file}")
+                return model
+            except Exception as e:
+                print(f"[TRAIN] Could not seed from {init_file} ({e}) — "
+                      f"trying BC / fresh.")
+        else:
+            print(f"[TRAIN] init_from not found: {init_file} — trying BC / fresh.")
 
     # 2. Warm-start from behavior-cloned weights
     if bc_path is not None:
