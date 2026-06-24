@@ -644,13 +644,20 @@ def train(cfg: dict):
 
 # ══════════════════════════════════════════════════════ train_visual ══════════
 
-def train_visual(cfg: dict):
+def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = False):
     """
     PPO training with live pygame telemetry dashboard.
 
     Flow:
       1. Config screen  — user sets teacher/curriculum params, clicks START.
       2. Training phase — background thread runs PPO; main thread drives pygame.
+
+    save_path (optional): explicit checkpoint path (without .zip) for the final
+        model.save(); defaults to <model_dir>/latest. Used by expert training to
+        save to models/experts/<mode>.
+    skip_config_screen (optional): when True, skip the in-pygame config screen
+        and use cfg as-is (the caller, e.g. the tkinter launcher, already
+        configured it).
     """
     import sys
     import threading
@@ -668,30 +675,31 @@ def train_visual(cfg: dict):
     font     = pygame.font.SysFont("Consolas", 26)
 
     # ── Phase 1: pre-training config screen ───────────────────────────────────
-    renderer.init_config_screen(cfg)
-    cfg_action = None
-    while cfg_action != "start":
-        for event in pygame.event.get():
-            result = renderer.handle_config_event(event)
-            if result in ("start", "quit"):
-                cfg_action = result
-                break
-        if cfg_action == "quit":
-            pygame.quit()
-            sys.exit(0)
-        if cfg_action != "start":
-            renderer.render_config_screen()
-        clock.tick(60)
+    if not skip_config_screen:
+        renderer.init_config_screen(cfg)
+        cfg_action = None
+        while cfg_action != "start":
+            for event in pygame.event.get():
+                result = renderer.handle_config_event(event)
+                if result in ("start", "quit"):
+                    cfg_action = result
+                    break
+            if cfg_action == "quit":
+                pygame.quit()
+                sys.exit(0)
+            if cfg_action != "start":
+                renderer.render_config_screen()
+            clock.tick(60)
 
-    # Merge user choices into cfg and write back to config.txt
-    user_settings = renderer.get_config_draft()
-    renderer.save_config_to_file(user_settings)
-    cfg = {**cfg, **user_settings}
+        # Merge user choices into cfg and write back to config.txt
+        user_settings = renderer.get_config_draft()
+        renderer.save_config_to_file(user_settings)
+        cfg = {**cfg, **user_settings}
 
     # ── Phase 2: training setup (uses the now-final cfg) ─────────────────────
     timesteps   = int(cfg.get("timesteps", 300_000))
-    latest_path = _latest_path(cfg)
-    os.makedirs(_model_dir(cfg), exist_ok=True)
+    latest_path = save_path or _latest_path(cfg)
+    os.makedirs(os.path.dirname(latest_path) or _model_dir(cfg), exist_ok=True)
 
     curriculum_mgr = _make_curriculum(cfg)
     bc_path_vis    = cfg.get("init_from_bc", None)

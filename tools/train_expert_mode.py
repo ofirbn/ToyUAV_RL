@@ -157,6 +157,40 @@ def train_expert(cfg: dict):
                              out=cfg.get("expert_out") or None, **common)
 
 
+def train_expert_visual(cfg: dict):
+    """main.py entry for mode=train_expert_visual: train ONE expert with the
+    live pygame dashboard (reuses train.train_visual). expert_mode='all' is not
+    shown live — it falls back to headless all-expert training."""
+    em = str(cfg.get("expert_mode", "approach")).lower()
+    if em == "all":
+        print("[TRAIN] Visual training shows one expert at a time; 'all' runs "
+              "headless. Pick a single mode for the live dashboard.")
+        return train_expert(cfg)
+
+    mode  = resolve_mode(em)
+    out   = cfg.get("expert_out") or default_model_path(mode)
+    phase = phase_for(mode)
+    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
+
+    # Drive the existing live dashboard: curriculum off, env locked to the mode,
+    # final checkpoint saved to the isolated expert path. Auto BC warm-start
+    # unless the caller set one explicitly.
+    vis_cfg = {
+        **cfg,
+        "curriculum":       "false",
+        "curriculum_phase": phase,
+        "model":            out + ".zip",   # so _model_dir -> models/experts
+    }
+    if not vis_cfg.get("init_from_bc"):
+        vis_cfg["init_from_bc"] = _auto_bc_path(mode)
+
+    print(f"[TRAIN] Visual expert training: {mode.name} "
+          f"(phase='{phase}') -> {out}.zip")
+    from train import train_visual
+    train_visual(vis_cfg, save_path=out, skip_config_screen=True)
+    return out
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         description="Train a single-mode PPO expert for any FlightMode.")

@@ -19,7 +19,7 @@ CURRICULUM_STAGES = [
     "waypoint", "loiter", "approach", "landing", "mixed",
 ]
 MODES = ["train_visual", "pipeline_visual", "train", "train_expert",
-         "visualize", "demo"]
+         "train_expert_visual", "visualize", "demo"]
 
 # Experts trainable via mode=train_expert (saved to models/experts/<mode>.zip).
 # "all" trains every expert sequentially.
@@ -111,7 +111,7 @@ class ConfigGUI:
         self.expert_mode_var = tk.StringVar(
             value=cfg.get("expert_mode", "approach"))
         self._expert_lbl, self._expert_cb, r = self._combo(
-            outer, r, "Expert mode  (train_expert)", self.expert_mode_var,
+            outer, r, "Expert mode  (train_expert*)", self.expert_mode_var,
             EXPERT_MODES, return_widgets=True)
         self.mode_var.trace_add("write", lambda *_: self._sync_expert())
         self._sync_expert()
@@ -258,7 +258,7 @@ class ConfigGUI:
         self._phase_lbl.config(foreground="black" if on else "gray")
 
     def _sync_expert(self):
-        on = self.mode_var.get() == "train_expert"
+        on = self.mode_var.get() in ("train_expert", "train_expert_visual")
         self._expert_cb.config(state="readonly" if on else "disabled")
         self._expert_lbl.config(foreground="black" if on else "gray")
 

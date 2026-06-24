@@ -11,6 +11,8 @@ Supported modes:
     train_expert     — headless PPO training of one isolated mode expert, or
                        all experts (set expert_mode=<mode> or expert_mode=all;
                        saved to models/experts/<mode>.zip)
+    train_expert_visual — like train_expert but with the live pygame dashboard
+                       (one expert at a time; expert_mode=all runs headless)
     visualize        — run trained model in pygame window
     demo             — alias for visualize
 """
@@ -89,6 +91,10 @@ def main():
     elif mode in ("train_expert", "expert"):
         from tools.train_expert_mode import train_expert
         train_expert(cfg)
+
+    elif mode in ("train_expert_visual", "expert_visual"):
+        from tools.train_expert_mode import train_expert_visual
+        train_expert_visual(cfg)
 
     elif mode in ("visualize", "demo"):
         from visualize import run
