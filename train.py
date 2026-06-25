@@ -756,20 +756,31 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
 
     stop_event = threading.Event()
 
-    def _train_one(load_path, env_cfg, save_to, save_prefix):
-        """Build + train a single model for `timesteps`, rendering live."""
+    def _train_one(load_path, env_cfg, save_to, save_prefix, monitor=None):
+        """Build + train a single model, rendering live. With `monitor` (an
+        AdaptiveExpertMonitor) the budget is the monitor's max_timesteps safety
+        cap and training stops early when the monitor flags a plateau/target;
+        otherwise it runs for `timesteps` (the default train_visual behavior)."""
         env      = _make_env(env_cfg, None if expert_jobs else curriculum_mgr)
         model    = _build_model(env, env_cfg, load_path)
-        callback = LiveCallback(ss, cfg, save_prefix=save_prefix)
-        remaining = timesteps
+        live     = LiveCallback(ss, cfg, save_prefix=save_prefix)
+        if monitor is not None:
+            callbacks = [monitor, live]
+            budget    = monitor.p["max_timesteps"]
+        else:
+            callbacks = live
+            budget    = timesteps
+        remaining = budget
         while remaining > 0 and not stop_event.is_set():
             chunk = min(CHUNK_SIZE, remaining)
             model.learn(
                 total_timesteps     = chunk,
                 reset_num_timesteps = False,
-                callback            = callback,
+                callback            = callbacks,
             )
             remaining -= chunk
+            if monitor is not None and monitor.should_stop:
+                break
         model.save(save_to)
         try:
             env.close()
@@ -778,6 +789,7 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
 
     def _training_thread():
         if expert_jobs:
+            from tools.expert_eval import AdaptiveExpertMonitor, finalize_expert
             n = len(expert_jobs)
             for i, job in enumerate(expert_jobs):
                 if stop_event.is_set():
@@ -794,8 +806,17 @@ def train_visual(cfg: dict, save_path: str = None, skip_config_screen: bool = Fa
                     job_cfg["init_from_bc"] = job["init_from_bc"]
                 else:
                     job_cfg.pop("init_from_bc", None)
+
+                monitor = None
+                if job.get("params") and job.get("mode") is not None:
+                    monitor = AdaptiveExpertMonitor(job["mode"], job["save_path"],
+                                                    job["params"], shared_state=ss)
                 _train_one(job["save_path"], job_cfg, job["save_path"],
-                           job["save_path"])
+                           job["save_path"], monitor=monitor)
+                if monitor is not None:
+                    if monitor.stop_reason:
+                        print(f"[TRAIN] {job['label']}: stopped — {monitor.stop_reason}")
+                    finalize_expert(job["save_path"], job["mode"])
                 print(f"[TRAIN] Saved expert -> {job['save_path']}.zip")
                 ss.push_event(f"DONE {job['label']}", (0, 255, 120))
             print("\n[TRAIN] All experts done.")

@@ -138,6 +138,28 @@ class ConfigGUI:
             outer, r, "Init new expert from", self.expert_init_var,
             init_opts, editable=True, pin_top=True, return_widgets=True)
 
+        # Adaptive expert training: periodic eval + multi-objective early stop.
+        # No fixed PPO step count — "Max timesteps" is only a safety cap. Leave
+        # "Min improvement delta" blank to use the per-mode default.
+        self.expert_eval_interval_var = tk.StringVar(
+            value=cfg.get("expert_eval_interval_steps", "20000"))
+        r = self._entry(outer, r, "  Eval interval (steps)",
+                        self.expert_eval_interval_var)
+        self.expert_eval_episodes_var = tk.StringVar(
+            value=cfg.get("expert_eval_episodes", "30"))
+        r = self._entry(outer, r, "  Eval episodes", self.expert_eval_episodes_var)
+        self.expert_patience_var = tk.StringVar(
+            value=cfg.get("expert_early_stop_patience", "4"))
+        r = self._entry(outer, r, "  Early-stop patience", self.expert_patience_var)
+        self.expert_min_delta_var = tk.StringVar(
+            value=cfg.get("expert_min_improvement_delta", ""))
+        r = self._entry(outer, r, "  Min improvement delta (blank=auto)",
+                        self.expert_min_delta_var)
+        self.expert_max_ts_var = tk.StringVar(
+            value=cfg.get("expert_max_timesteps", "1000000"))
+        r = self._entry(outer, r, "  Max timesteps (safety cap)",
+                        self.expert_max_ts_var)
+
         self.mode_var.trace_add("write", lambda *_: self._sync_expert())
         self._sync_expert()
 
@@ -301,6 +323,11 @@ class ConfigGUI:
             "expert_visual":        "true" if self.expert_visual_var.get() else "false",
             "expert_init_from":     ("" if self.expert_init_var.get().startswith("(auto")
                                      else self.expert_init_var.get()),
+            "expert_eval_interval_steps": self.expert_eval_interval_var.get(),
+            "expert_eval_episodes":       self.expert_eval_episodes_var.get(),
+            "expert_early_stop_patience": self.expert_patience_var.get(),
+            "expert_min_improvement_delta": self.expert_min_delta_var.get().strip(),
+            "expert_max_timesteps":       self.expert_max_ts_var.get(),
             "mission":              self.mission_var.get(),
             "model":                ("models/latest.zip" if scratch
                                      else self.model_var.get()),
@@ -331,6 +358,16 @@ class ConfigGUI:
             float(self.smooth_var.get())
             if ts <= 0 or se <= 0 or re <= 0 or bc <= 0:
                 raise ValueError("timesteps, save_every, record_episodes, bc_epochs must be > 0")
+            # Adaptive expert params (min-delta may be blank = per-mode default).
+            ei = int(self.expert_eval_interval_var.get())
+            ee = int(self.expert_eval_episodes_var.get())
+            pa = int(self.expert_patience_var.get())
+            mx = int(self.expert_max_ts_var.get())
+            md = self.expert_min_delta_var.get().strip()
+            if md:
+                float(md)
+            if ei <= 0 or ee <= 0 or pa <= 0 or mx <= 0:
+                raise ValueError("expert eval interval/episodes/patience/max-timesteps must be > 0")
             return True
         except ValueError as e:
             messagebox.showerror("Invalid Input", str(e))

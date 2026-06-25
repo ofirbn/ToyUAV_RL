@@ -33,6 +33,15 @@ visualize_training=true
 save_every=100000
 action_smooth_weight=0.03
 stall_speed=6.0
+# Adaptive expert training (mode=train_expert). No fixed PPO step count:
+# expert_max_timesteps is only a safety cap; training stops on a multi-objective
+# plateau or when success/crash targets hold. Leave expert_min_improvement_delta
+# blank to use the per-mode default reward delta.
+expert_eval_interval_steps=20000
+expert_eval_episodes=30
+expert_early_stop_patience=4
+expert_min_improvement_delta=
+expert_max_timesteps=1000000
 # emergency_recovery_enabled: allow RECOVERY mode to activate on stall/bad attitude.
 # Defaults: false for stabilize/cruise/altitude/heading/waypoint/loiter/approach/landing
 #           true  for recovery/mixed
